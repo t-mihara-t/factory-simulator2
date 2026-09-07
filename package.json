@@ -1,0 +1,11 @@
+{
+  "name": "factory-simulator2",
+  "version": "0.1.0",
+  "private": true,
+  "description": "RAILWORKS YARD — a spatial factory management simulation",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node --check dist/simulation.js && node --check dist/world.js && node --check dist/app.js && node scripts/check-static.js"
+  },
+  "engines": { "node": ">=20" }
+}

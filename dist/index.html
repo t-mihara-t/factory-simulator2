@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#152b2f">
+<title>RAILWORKS YARD — Factory Simulator 2</title>
+<meta name="description" content="工場を歩くように眺め、設備と人を育てる。鉄道車両の流れを整える工場経営シミュレーション。">
+<link rel="icon" href="assets/icon.svg"><link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="game">
+ <header class="topbar">
+  <a class="brand" href="./" aria-label="RAILWORKS YARD ホーム"><span class="brand-icon">R<span>II</span></span><span>RAILWORKS <b>YARD</b><small>FACTORY SIMULATOR 2</small></span></a>
+  <div class="topstats"><div class="stat"><span>運転資金</span><strong id="cash">16,000 <small>G</small></strong></div><div class="stat optional"><span>累計営業利益</span><strong id="profit">0 <small>G</small></strong></div><div class="stat"><span>出荷</span><strong id="delivered">0 <small>両</small></strong></div><div class="stat optional"><span>従業員</span><strong id="headcount">10 <small>人</small></strong></div></div>
+  <button class="icon-button" id="settings" aria-label="設定と保存">⚙</button>
+ </header>
+ <main id="workspace">
+  <div id="map-wrap"><canvas id="world" aria-label="工場マップ。ドラッグで移動、ピンチで拡大。設備は設備一覧からも選択できます" tabindex="0"></canvas></div>
+  <div class="map-heading"><span class="eyebrow">SEASIDE INDUSTRIAL PARK</span><h1>潮風の車両工場 <span id="level">Lv. 1</span></h1><p id="map-instruction">ドラッグで探索 · 設備をタップして管理</p></div>
+  <section class="mission panel" aria-label="シナリオ目標"><div class="panel-kicker"><span id="chapter">CHAPTER 01</span><button id="scenarios" class="text-button">シナリオ ↗</button></div><h2 id="mission-title">最初の出荷を、この工場から。</h2><div id="mission-goals"></div><button id="mission-action" class="text-button"></button></section>
+  <section class="events panel" aria-label="工場の出来事"><div class="panel-kicker"><span>工場からのお知らせ</span><span id="event-count"></span></div><div id="event-list"></div></section>
+  <div id="context-panel" class="context panel" hidden></div>
+  <div id="build-hint" class="build-hint panel" hidden></div>
+  <div class="map-tools panel"><button id="zoom-out" aria-label="縮小">−</button><span id="zoom-level">100%</span><button id="zoom-in" aria-label="拡大">＋</button><button id="recenter" aria-label="工場全体に戻る">⌖</button><button id="heatmap" aria-label="混雑表示を切り替える" title="混雑表示">◉</button></div>
+  <div class="minimap panel"><canvas id="minimap" width="180" height="118" aria-label="全域地図。タップした場所へ移動"></canvas><span>工場全域 <b>38 × 30</b></span></div>
+  <div class="timeline panel"><div class="clock"><span class="sun">☀</span><span><b id="game-date">DAY 01 · 08:00</b><small id="run-state">操業を開始できます</small></span></div><button id="play" class="primary">▶ 操業開始</button><div class="speeds" aria-label="ゲーム速度"><button data-speed="1" class="active">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button></div></div>
+  <nav class="dock panel" aria-label="工場管理"><button data-panel="build"><span>＋</span>建設</button><button data-panel="staff"><span>♙</span>雇用・配置</button><button data-panel="orders"><span>▤</span>受注<span id="order-badge" class="badge">3</span></button><button data-panel="flow"><span>⇄</span>生産管理</button><button data-panel="finance"><span>▥</span>経営</button></nav>
+  <aside id="toast" class="toast" role="status" aria-live="polite" hidden></aside>
+ </main>
+ <footer><span><i></i> RAILWORKS YARD <small>PROTOTYPE 0.1</small></span><span id="flow-summary">設計 → 加工 → 組立 → 検査 → 出荷</span><a href="proposal.html" target="_blank" rel="noopener">企画書 ↗</a></footer>
+</div>
+<dialog id="modal"><div class="modal-head"><div><span class="eyebrow" id="modal-eyebrow">FACTORY OFFICE</span><h2 id="modal-title"></h2></div><button class="icon-button" id="close-modal" aria-label="閉じる">×</button></div><div id="modal-body"></div></dialog>
+<script src="catalog.js"></script><script src="music.js"></script><script src="audio.js"></script><script src="simulation.js"></script><script src="world.js"></script><script src="app.js"></script>
+</body></html>
