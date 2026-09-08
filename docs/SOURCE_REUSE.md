@@ -20,3 +20,7 @@ New: simulation.js, world.js, app.js, index.html, style.css, proposal.html, test
 The building atlas is an original generated image, supplied as 1536 × 1024 RGBA, six cells in a 3 × 2 grid. It is used directly without modifying its pixels.
 
 The old simulation engine, UI, save data, scenario IDs, native identifiers, Git metadata and hosting identity are not copied. The older local checkout remains untouched.
+
+## 0.2 additions
+
+`dist/planner.js` and `tests/planning.test.js` are new. `process-atlas-v02.png` is an original generated 1448 × 1086 RGBA atlas, with four process-material cells and two poses per worker role. Used directly with explicit Canvas source rectangles, without pixel editing. Existing audio, music, catalog and train assets remain byte-for-byte unchanged.

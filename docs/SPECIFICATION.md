@@ -1,6 +1,8 @@
-# Factory Simulator 2 — prototype 0.1
+# Factory Simulator 2 — prototype 0.2
 
-Full Japanese proposal: [proposal.html](../dist/proposal.html).
+Current Japanese change specification: [CHANGES_V02.md](CHANGES_V02.md).
+
+Original 0.1 Japanese proposal (historical; see 0.2 changes first): [proposal.html](../dist/proposal.html).
 
 ## Core
 
@@ -14,10 +16,10 @@ Full Japanese proposal: [proposal.html](../dist/proposal.html).
 
 Accepted, unreleased order → material payment → transfer to design → station queue → work → next stage.
 Completed work goes to an available next-stage input, otherwise to warehouse, otherwise blocks its producing station.
-Warehouse contents automatically return to an eligible next stage. Completed inspection transfers to dispatch; arrival realizes revenue and cost of sales.
+Warehouse contents automatically return to an eligible next stage. Completed inspection transfers to the finished-goods store at dispatch. Early arrivals incur 0.90 G/car/second until the deadline; shipment then realizes revenue and cost of sales. Late arrivals ship immediately.
 
 Station input capacity is 2, including incoming transport reservations. An active or blocked job occupies the machine, not an input queue slot. Warehouse capacity is 6×level, also including incoming reservations.
-Work-in-progress limit counts every unfinished job, including work, transfer, station queue, blocked output and warehouse. Lowering the limit does not delete existing jobs.
+Work-in-progress counts jobs with stage < 4, including work, transfer, station queue, blocked output and intermediate warehouse. Finished goods are excluded. Lowering the limit does not delete existing jobs.
 Release interval is at least 4 seconds. Active accepted orders are limited to 10; offers expire, accepted orders do not vanish at deadlines.
 
 ## Logistics
@@ -36,7 +38,7 @@ Cash = initial cash + revenue + rewards − material payments − operating expe
 Capex includes construction, upgrades and land less demolition recoveries (35% of associated investment). Scenario subsidies are never operating profit.
 Late penalty = sale × min(0.25, 0.05 + secondsLate ×0.001).
 No taxes, depreciation, interest, loans, labor law model or real-world financial valuation.
-Cash < −3000 freezes the run as failed; a confirmation screen can start a new scenario.
+Cash <= 0 freezes the run as failed; a confirmation screen can start a new scenario.
 
 ## People and reliability
 
@@ -56,18 +58,24 @@ Keep generating offers after scenario clearance. Rewards cannot be reclaimed.
 ## Saves and limits
 
 Explicitly device-local save key `railworks-yard-save-v1`, preferences `railworks-yard-prefs-v1`; no old-game save migration. Autosave every 15 simulation seconds and on actions/visibility loss, plus manual save. Saving exceptions never crash play.
-Schema 1. Serialization excludes route cache; restore reconstructs cache on demand.
+Schema 2; migrates schema 1 without changing historical cash or material value. Serialization excludes route cache; restore reconstructs cache on demand.
 Bounds: 36 facilities, 60 workers, WIP selectable up to 12. Map dimensions are fixed in prototype.
 Offer list capped, news 30 items, chart history 240 samples. Completed order history is retained in save.
 
 ## Deferred
 
-Road laying, finite transport fleets, collision/congestion, schedules for deliveries and finished goods storage, procurement and supplier delays, electricity, worker skills/fatigue/shifts, overtime, outsourcing, setup changes, cloud sync and signed native app distribution.
+Road laying, finite transport fleets, collision/congestion, procurement and supplier delays, electricity, worker skills/fatigue/shifts, overtime, outsourcing, setup changes, cloud sync and signed native app distribution.
 
 ## Verification
 
 `node --test tests/*.test.js`
 `npm run check` (equivalent Node syntax checks and scripts/check-static.js; no installation required).
 
-15 behavior tests pass. Three scenarios clear under the documented heuristic: coast 478s/22 shipments, surge 358s/20, rescue 391s/12. This proves existence of a successful strategy, not first-time difficulty or mobile frame rate.
+26 behavior tests pass. Three scenarios clear under the documented heuristic: coast 1171s/23 shipments, surge 759s/21, rescue 669s/12. This proves existence of a successful strategy, not first-time difficulty or mobile frame rate.
 Browser, native touch/audio, visual QA and real-device performance are not verified in this task.
+
+## New operating details
+
+Floor queue / blocked-output storage: 0.60 G/car/sec; intermediate warehouse: 0.25; finished goods: 0.90. All are part of operating expenses, with a separate subledger. Manual intermediate storage holds until resumeJob. Accepted orders may have releaseAt and per-stage routes; factory routeDefaults apply otherwise. Explicit routes wait for that facility, and already-dispatched transfers remain committed.
+
+planner.js clones the live engine state and advances the same fixed step, without future offers or random events, up to 1800 seconds. It accounts for finite resource and waiting capacity, transport, deterioration, already-started repairs, wages, inventory costs, release gates and cash. It does not perform optimization or assume future player repairs.
