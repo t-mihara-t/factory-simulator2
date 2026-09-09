@@ -24,3 +24,7 @@ The old simulation engine, UI, save data, scenario IDs, native identifiers, Git 
 ## 0.2 additions
 
 `dist/planner.js` and `tests/planning.test.js` are new. `process-atlas-v02.png` is an original generated 1448 × 1086 RGBA atlas, with four process-material cells and two poses per worker role. Used directly with explicit Canvas source rectangles, without pixel editing. Existing audio, music, catalog and train assets remain byte-for-byte unchanged.
+
+## 0.3 additions
+
+`perfect-schedule.png` and `game-over.png` are original generated 1536 × 1024 result graphics. `order-slip.png` is an original generated 1254 × 1254 transparent clipboard sprite. All three are used without modifying their pixels. The worker action atlas from 0.2 is reused with larger minimum display size and role-specific alternating poses. The original catalog, music, audio, trains, and worker assets are unchanged.

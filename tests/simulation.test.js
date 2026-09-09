@@ -5,18 +5,25 @@ function advance(s,seconds){for(let i=0;i<Math.round(seconds/S.STEP);i++)S.step(
 function conserved(s){
  const ids=new Set(s.jobs.map(j=>j.id));assert.equal(ids.size,s.jobs.length);
  const placed=[];for(const b of s.buildings){placed.push(...b.queue);if(b.active)placed.push(b.active);assert(b.staff>=0&&b.staff<=4);assert(b.queue.length+S.incoming(s,b.id)<=(b.type==='warehouse'?6*b.level:2));}
- for(const j of s.jobs){assert.equal(placed.filter(id=>id===j.id).length,['transfer','finished'].includes(j.status)?0:1);assert(s.orders.some(o=>o.id===j.order));}
+ for(const j of s.jobs){assert.equal(placed.filter(id=>id===j.id).length,['transfer','finished','procurement','material_ready','material_funds'].includes(j.status)?0:1);assert(s.orders.some(o=>o.id===j.order));}
  for(const o of s.orders)assert.equal(o.released-o.shipped,s.jobs.filter(j=>j.order===o.id).length);
+ const inventoryValue=s.materials.reduce((n,l)=>n+l.cost,0)+s.jobs.filter(j=>!s.materials.some(l=>l.id===j.materialLot)).reduce((n,j)=>n+j.materialCost,0);assert(Math.abs(inventoryValue-(s.ledger.materials-s.ledger.cogs))<.00001);
  const l=s.ledger;assert(Math.abs(s.cash-(s.initialCash+l.revenue+l.rewards-l.materials-l.operating-l.capex))<.00001);
  assert.equal(S.freeStaff(s)+s.buildings.reduce((n,b)=>n+b.staff,0),s.employees);
 }
-function play(s,limit=1500){
+function play(s,limit=1800){
+ if(s.scenario==='studio'){const b=S.build(s,'design',18,7);assert(b.ok);S.assign(s,b.id,1);S.assign(s,b.id,1);S.hire(s);S.hire(s);}
+ if(s.scenario==='justintime')s.orders.forEach((o,i)=>S.setRelease(s,o.id,180+i*35));
  S.assign(s,'b3',1);S.assign(s,'b3',1);
  for(let i=0;i<limit/S.STEP&&!s.failed;i++){
   if(i%10===0){
    for(const b of s.buildings)if(b.broken&&!b.repairRemaining)S.repair(s,b.id);
    const active=s.orders.filter(o=>o.status==='active').reduce((n,o)=>n+o.quantity-o.shipped,0);
-   if(active<5){const o=s.offers.find(o=>o.product==='kintetsu')||s.offers[0];if(o&&s.cash>S.PRODUCTS[o.product].cost*o.quantity+2000)S.accept(s,o.id);}
+   if(active<5){const headroom=s.cash-S.materialCommitment(s)-2500,affordable=s.offers.filter(o=>S.PRODUCTS[o.product].cost*o.quantity<headroom),o=affordable.find(o=>o.product==='kintetsu')||affordable[0];if(o)S.accept(s,o.id);}
+   if(s.scenario==='stockyard'&&s.metrics.stockUses<4){
+    for(const o of s.orders.filter(o=>o.status==='active')){const q=S.materialSummary(s,o.product),needed=o.quantity-o.shipped-s.jobs.filter(j=>j.order===o.id&&j.materialPaid).length-q.onHand-q.inbound;
+     if(needed>0&&s.metrics.stockUses+s.materials.filter(l=>l.advance).length<4&&s.cash>S.PRODUCTS[o.product].cost+2500)S.buyMaterials(s,o.product);}
+   }
    if(S.mission(s).ready){S.claim(s);if(s.completedScenario)return s;}
    if(s.chapter>=1&&!s.buildings.some(b=>b.type==='warehouse')&&s.cash>6500)S.build(s,'warehouse',18,13);
    if(s.chapter>=3){if(!s.expanded&&s.cash>14000)S.expand(s);if(s.expanded&&s.buildings.filter(b=>S.TYPES[b.type].stage!==null).length<5&&s.cash>12000){const r=S.build(s,'assembly',18,7);if(r.ok){S.hire(s);S.hire(s);S.assign(s,r.id,1);S.assign(s,r.id,1);}}}
@@ -25,7 +32,7 @@ function play(s,limit=1500){
  }return s;
 }
 test('initial three orders ship exactly once; cash, materials and jobs reconcile',()=>{const s=S.create();advance(s,320);assert.equal(s.metrics.delivered,3);assert.equal(s.jobs.length,0);assert.equal(s.ledger.revenue,14700);conserved(s);});
-test('material purchase reduces cash but stays outside cost of sales until shipment',()=>{const s=S.create();advance(s,1);assert(s.ledger.materials>0);assert.equal(s.ledger.cogs,0);assert.equal(S.profit(s),-s.ledger.operating);conserved(s);});
+test('material purchase reduces cash but stays outside cost of sales until shipment',()=>{const s=S.create();advance(s,1);assert.equal(s.ledger.materials,0);advance(s,40);assert(s.ledger.materials>0);assert.equal(s.ledger.cogs,0);assert.equal(S.profit(s),-s.ledger.operating);conserved(s);});
 test('build restrictions and insufficient cash never consume funds',()=>{const s=S.create(),cash=s.cash;for(const p of [['assembly',12,13],['warehouse',-2,10],['warehouse',27,10],['warehouse',4,10]])assert.equal(S.build(s,...p).ok,false);assert.equal(s.cash,cash);s.cash=100;assert.equal(S.build(s,'warehouse',18,13).ok,false);assert.equal(s.cash,100);});
 test('employment and assignment conserve staff and refuse excess assignment',()=>{const s=S.create();assert(S.assign(s,'b3',1).ok);assert(S.assign(s,'b3',1).ok);assert.equal(S.assign(s,'b3',1).ok,false);assert.equal(S.dismiss(s).ok,false);assert(S.assign(s,'b1',-1).ok);assert(S.dismiss(s).ok);assert(S.hire(s).ok);conserved(s);});
 test('full downstream blocks upstream; a warehouse permits physical spill and later recovery',()=>{const s=S.create('sandbox');s.wipLimit=12;S.assign(s,'b4',-1);S.assign(s,'b4',-1);for(let n=0;n<4;n++){const o=S.makeOffer(s,'kintetsu',2,900);s.offers.push(o);S.accept(s,o.id);}advance(s,180);assert(s.buildings.some(b=>S.status(s,b).kind==='blocked'));const r=S.build(s,'warehouse',18,13);assert(r.ok);advance(s,30);assert(s.jobs.some(j=>j.status==='buffer'||j.target===r.id));conserved(s);S.assign(s,'b4',1);S.assign(s,'b4',1);advance(s,700);assert(s.metrics.delivered>=8);conserved(s);});
@@ -36,6 +43,6 @@ test('preventive maintenance and staffed maintenance shop protect equipment',()=
 test('lowering work in progress limit does not delete work already in process',()=>{const s=S.create();advance(s,20);const ids=s.jobs.map(j=>j.id);assert(ids.length>=2);s.wipLimit=2;advance(s,1);assert(ids.every(id=>s.jobs.some(j=>j.id===id)));conserved(s);});
 test('completed scenario reward cannot be claimed repeatedly',()=>{const s=play(S.create('surge'));assert(s.completedScenario);const cash=s.cash;assert.equal(S.claim(s).ok,false);assert.equal(s.cash,cash);});
 test('save and restore continue with identical routing, finances and random events',()=>{const a=S.create();advance(a,35);const b=S.restore(S.serialize(a));advance(a,210);advance(b,210);assert.equal(S.serialize(a),S.serialize(b));assert.throws(()=>S.restore('{broken'));assert.throws(()=>S.restore('{"version":999}'));});
-test('all three scenarios have a reproducible strategy that completes goals',()=>{const report=[];for(const scenario of ['coast','surge','rescue']){const s=play(S.create(scenario));assert.equal(s.completedScenario,true,scenario);assert(!s.failed);conserved(s);report.push({scenario,seconds:Math.round(s.t),shipments:s.metrics.delivered,profit:Math.round(S.profit(s)),cash:Math.round(s.cash),repairs:s.metrics.repairs});}console.log('SCENARIO_REPORT '+JSON.stringify(report));});
+test('all six scenarios have a reproducible strategy that completes goals',()=>{const report=[];for(const scenario of ['coast','surge','rescue','stockyard','studio','justintime']){const s=play(S.create(scenario));assert.equal(s.completedScenario,true,scenario);assert(!s.failed);conserved(s);report.push({scenario,seconds:Math.round(s.t),shipments:s.metrics.delivered,profit:Math.round(S.profit(s)),cash:Math.round(s.cash),repairs:s.metrics.repairs});}console.log('SCENARIO_REPORT '+JSON.stringify(report));});
 test('insolvency freezes the simulation; continuing never drains more funds',()=>{const s=S.create();s.cash=1;S.step(s,1);assert(s.failed);const t=s.t,cash=s.cash;S.step(s);assert.equal(s.t,t);assert.equal(s.cash,cash);});
 test('event transport support actually reduces duration of newly dispatched transport',()=>{const a=S.create(),b=S.create();S.triggerEvent(b,3);S.step(a);S.step(b);assert(b.jobs[0].travelTime<a.jobs[0].travelTime);});

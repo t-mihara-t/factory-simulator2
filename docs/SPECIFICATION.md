@@ -1,8 +1,8 @@
-# Factory Simulator 2 — prototype 0.2
+# Factory Simulator 2 — prototype 0.3
 
-Current Japanese change specification: [CHANGES_V02.md](CHANGES_V02.md).
+Current Japanese change specification: [CHANGES_V03.md](CHANGES_V03.md).
 
-Original 0.1 Japanese proposal (historical; see 0.2 changes first): [proposal.html](../dist/proposal.html).
+Current Japanese game proposal: [proposal.html](../dist/proposal.html).
 
 ## Core
 
@@ -14,7 +14,7 @@ Original 0.1 Japanese proposal (historical; see 0.2 changes first): [proposal.ht
 
 ## State transitions
 
-Accepted, unreleased order → material payment → transfer to design → station queue → work → next stage.
+Accepted, unreleased order → release reservation and finite design capacity → paperwork from sales to design → design work → material procurement or advance stock allocation → raw material transport from supply yard to machining → assembly → inspection. Design resources are freed while procurement runs. Material funds/lead/capacity waits remain manufacturing WIP.
 Completed work goes to an available next-stage input, otherwise to warehouse, otherwise blocks its producing station.
 Warehouse contents automatically return to an eligible next stage. Completed inspection transfers to the finished-goods store at dispatch. Early arrivals incur 0.90 G/car/second until the deadline; shipment then realizes revenue and cost of sales. Late arrivals ship immediately.
 
@@ -32,7 +32,7 @@ Paths are cached by topology revision. Add/remove construction invalidates cache
 ## Economics
 
 New product prices = source sale/cost ×10. Work seconds = source work ×1.2 +6 per stage.
-Material payment occurs at release. Inventory material value = total material payments − materials recognized for shipped vehicles.
+Material payment occurs at procurement after design, or when advance stock is ordered. Product-specific kits take 24–42 seconds (twice that in stockyard). Advance stock reserves its original arrival time; paid lots are allocated once and removed when leaving the yard. Unallocated advance stock is limited to 12 kits, including inbound. Yard holding costs 0.18 G/kit/sec from actual arrival until dispatch. Inventory material value = total material payments − materials recognized for shipped vehicles.
 Operating profit = revenue − shipped material cost − wages − upkeep − warehouse charges − penalties − hiring/severance/maintenance costs.
 Cash = initial cash + revenue + rewards − material payments − operating expenses − net capital expenditure.
 Capex includes construction, upgrades and land less demolition recoveries (35% of associated investment). Scenario subsidies are never operating profit.
@@ -51,31 +51,31 @@ Random improvement event ×1.2 capacity for 35 seconds; multiple active effects 
 ## Content
 
 Coast campaign has 4 chapters, manual reward claim, and a guaranteed machining failure on entering chapter 3.
-Surge: 20 shipments + 18,000 G profit. Rescue: 2 repairs + 12 shipments + 8,000 G profit. Sandbox: no goals, 60,000 G starting cash.
+Surge: 20 shipments + 18,000 G profit. Rescue: 2 repairs + 12 shipments + 8,000 G profit. Stockyard: 4 advance stock uses, 8 on-time shipments, 6,000 G profit; lead times doubled. Studio: 2 design buildings, 10 on-time shipments, 8,000 G profit. Just-in-time: 6 on-time shipments, 9,000 G profit, 12,000 G initial cash. Sandbox: no goals, 60,000 G starting cash.
 Scenario seeds persist. Offers, degradation events, bonus offers, work and transport support are reproducible under the same action schedule.
 Keep generating offers after scenario clearance. Rewards cannot be reclaimed.
 
 ## Saves and limits
 
 Explicitly device-local save key `railworks-yard-save-v1`, preferences `railworks-yard-prefs-v1`; no old-game save migration. Autosave every 15 simulation seconds and on actions/visibility loss, plus manual save. Saving exceptions never crash play.
-Schema 2; migrates schema 1 without changing historical cash or material value. Serialization excludes route cache; restore reconstructs cache on demand.
+Schema 3; migrates schemas 1 and 2 without changing historical cash or material value. Legacy in-flight jobs have paid materials and skip a second purchase after design. New jobs follow the procurement rules. Serialization excludes route cache; restore reconstructs cache on demand.
 Bounds: 36 facilities, 60 workers, WIP selectable up to 12. Map dimensions are fixed in prototype.
 Offer list capped, news 30 items, chart history 240 samples. Completed order history is retained in save.
 
 ## Deferred
 
-Road laying, finite transport fleets, collision/congestion, procurement and supplier delays, electricity, worker skills/fatigue/shifts, overtime, outsourcing, setup changes, cloud sync and signed native app distribution.
+Road laying, finite transport fleets, collision/congestion, multiple suppliers and supply disruptions, electricity, worker skills/fatigue/shifts, overtime, outsourcing, setup changes, cloud sync and signed native app distribution.
 
 ## Verification
 
 `node --test tests/*.test.js`
 `npm run check` (equivalent Node syntax checks and scripts/check-static.js; no installation required).
 
-26 behavior tests pass. Three scenarios clear under the documented heuristic: coast 1171s/23 shipments, surge 759s/21, rescue 669s/12. This proves existence of a successful strategy, not first-time difficulty or mobile frame rate.
+34 behavior tests pass. All six scenarios clear under the documented heuristic; see CHANGES_V03.md for exact results. This proves existence of a successful strategy, not first-time difficulty or mobile frame rate.
 Browser, native touch/audio, visual QA and real-device performance are not verified in this task.
 
 ## New operating details
 
 Floor queue / blocked-output storage: 0.60 G/car/sec; intermediate warehouse: 0.25; finished goods: 0.90. All are part of operating expenses, with a separate subledger. Manual intermediate storage holds until resumeJob. Accepted orders may have releaseAt and per-stage routes; factory routeDefaults apply otherwise. Explicit routes wait for that facility, and already-dispatched transfers remain committed.
 
-planner.js clones the live engine state and advances the same fixed step, without future offers or random events, up to 1800 seconds. It accounts for finite resource and waiting capacity, transport, deterioration, already-started repairs, wages, inventory costs, release gates and cash. It does not perform optimization or assume future player repairs.
+planner.js clones the live engine state and advances the same fixed step, without future offers or random events, up to 3600 seconds. It accounts for finite resource and waiting capacity, transport, deterioration, already-started repairs, wages, inventory costs, release gates, advance stock, material lead times and cash. Chart width uses two pixels per simulation second so release shifts remain visible as the horizon expands. It does not perform optimization or assume future player repairs.

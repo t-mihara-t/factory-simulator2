@@ -1,7 +1,7 @@
-/* RAILWORKS YARD v0.2 — deterministic spatial simulation. No DOM dependency. */
+/* RAILWORKS YARD v0.3 — deterministic spatial simulation. No DOM dependency. */
 (function(root){'use strict';
 const Catalog=root.RailworksCatalog||(typeof require==='function'?require('./catalog.js'):null);
-const STEP=.1, WIDTH=38, HEIGHT=30, VERSION=2;
+const STEP=.1, WIDTH=38, HEIGHT=30, VERSION=3, MATERIAL_CAPACITY=12, MATERIAL_STORAGE=.18;
 const TYPES={
  design:{name:'設計スタジオ',short:'設計',stage:0,cost:4200,upkeep:.20,color:'#329bbc',sprite:0,desc:'図面をつくる最初の工程。設計の重い車種に。'},
  machining:{name:'加工工場',short:'加工',stage:1,cost:5200,upkeep:.30,color:'#cc8c34',sprite:1,desc:'車体や部品を加工。並列化で加工待ちを解消。'},
@@ -16,6 +16,9 @@ const SCENARIOS={
  coast:{name:'潮風の車両工場',sub:'はじめての工場長',desc:'小さな工場から4章を通して発展。投入・倉庫・保全・増設を学ぶ。',cash:18000,seed:113,chapter:0},
  surge:{name:'注文が押し寄せる街',sub:'受注と生産のバランス',desc:'短い納期の注文の波。仕掛を抑え、20両を出荷し、営業利益18,000Gへ。',cash:24000,seed:287,chapter:0},
  rescue:{name:'止まった工場を救え',sub:'修理と人員再配置',desc:'傷んだ加工工場を立て直す。修理2回・出荷12両・営業利益8,000Gが目標。',cash:20000,seed:591,chapter:0},
+ stockyard:{name:'海を渡る資材',sub:'先行手配と長い調達',desc:'材料リードタイムが2倍。先行手配を4両に活用し、納期内に8両を届ける。',cash:26000,seed:853,leadMultiplier:2,goals:[['stockUses',4,'先行手配の活用','両'],['ontime',8,'納期内出荷','両'],['profit',6000,'累計営業利益','G']],hint:'受注する車種の資材を先に手配。設計前に発注しておけば、材料の到着待ちを短縮できます。'},
+ studio:{name:'特急デザイン室',sub:'設計の並列化と経路',desc:'設計負荷の高い受注からスタート。設計室を2棟にし、納期内10両・利益8,000Gへ。',cash:27000,seed:997,goals:[['designBuildings',2,'設計スタジオ','棟'],['ontime',10,'納期内出荷','両'],['profit',8000,'累計営業利益','G']],hint:'設計室を増設し、未配置の2人を配置。生産管理で受注ごとの経路と開始予定を確かめましょう。'},
+ justintime:{name:'時刻表に合わせて',sub:'着工予約と倉庫費用',desc:'遠い納期の注文を資金12,000Gで回す。着工予約を使い、納期内6両・利益9,000Gへ。',cash:12000,seed:1259,goals:[['ontime',6,'納期内出荷','両'],['profit',9000,'累計営業利益','G']],hint:'早すぎる完成は倉庫費がかさみます。着工予約を動かし、完成を納期へ近づけましょう。給与を払える資金も残してください。'},
  sandbox:{name:'自由に育てる工場',sub:'サンドボックス',desc:'初期資金60,000G。制限時間なしで配置・雇用・投資を実験。',cash:60000,seed:731,chapter:0}
 };
 const CHAPTERS=[
@@ -29,13 +32,13 @@ function makeBuilding(id,type,x,y,staff=0){return {id,type,x,y,staff,level:1,con
 function create(scenario='coast'){
  if(!SCENARIOS[scenario])scenario='coast';const cfg=SCENARIOS[scenario];
  const s={version:VERSION,scenario,t:0,seed:cfg.seed,initialCash:cfg.cash,cash:cfg.cash,employees:10,expanded:false,wipLimit:5,releaseEnabled:true,priority:'edd',routeDefaults:{},chapter:0,claimed:[],completedScenario:false,failed:false,
-  buildings:[makeBuilding('b1','design',7,7,2),makeBuilding('b2','machining',12,7,2),makeBuilding('b3','assembly',12,13,2),makeBuilding('b4','inspection',7,13,2)],jobs:[],orders:[],offers:[],nextBuilding:5,nextJob:1,nextOrder:1,nextOffer:28,nextEvent:115,lastRelease:-10,routeVersion:0,
-  metrics:{delivered:0,ontime:0,late:0,repairs:0,upgrades:0,builds:0,transportTiles:0,cycleTotal:0},ledger:{revenue:0,materials:0,cogs:0,operating:0,wages:0,upkeep:0,storage:0,storageIntermediate:0,storageFloor:0,storageFinished:0,penalties:0,service:0,capex:0,rewards:0},events:[],news:[],history:[],lastHistory:0,shipping:[],effects:[],_cache:{}};
- for(let i=0;i<3;i++)s.offers.push(makeOffer(s,i===0?'kintetsu':i===1?'odakyu':'kintetsu',1,100+i*30));
+  buildings:[makeBuilding('b1','design',7,7,2),makeBuilding('b2','machining',12,7,2),makeBuilding('b3','assembly',12,13,2),makeBuilding('b4','inspection',7,13,2)],jobs:[],orders:[],offers:[],materials:[],nextMaterial:1,nextBuilding:5,nextJob:1,nextOrder:1,nextOffer:28,nextEvent:115,lastRelease:-10,routeVersion:0,
+  metrics:{delivered:0,ontime:0,late:0,repairs:0,upgrades:0,builds:0,transportTiles:0,cycleTotal:0,stockUses:0,materialLeadSaved:0},ledger:{revenue:0,materials:0,cogs:0,operating:0,wages:0,upkeep:0,storage:0,storageIntermediate:0,storageFloor:0,storageFinished:0,storageMaterials:0,penalties:0,service:0,capex:0,rewards:0},events:[],news:[],history:[],lastHistory:0,shipping:[],effects:[],_cache:{}};
+ for(let i=0;i<3;i++)s.offers.push(makeOffer(s,scenario==='studio'?'odakyu':i===1?'odakyu':'kintetsu',1,(scenario==='justintime'?280:scenario==='stockyard'?180:140)+i*40));
  const first=[...s.offers];first.forEach(o=>accept(s,o.id));
  for(let i=0;i<3;i++)s.offers.push(makeOffer(s,scenario==='surge'?'e235':i===0?'kintetsu':i===1?'n700':'e235',i===0?2:1,scenario==='surge'?170:270+i*50));
  if(scenario==='rescue'){s.buildings[1].broken=true;s.buildings[1].condition=0;s.buildings[3].condition=20;news(s,'加工工場が故障中','設備をタップして修理を依頼してください。','alert','b2');}
- news(s,'小さな工場の、大きな一歩','受注済みの3両を製造します。未配置の従業員が2人います。','info');return s;
+ news(s,'営業窓口に3件の受注が到着',cfg.hint||'操業開始で受注伝票が設計へ。設計完了後に材料を手配します。未配置の従業員は2人です。','info');return s;
 }
 function rand(s){s.seed=(Math.imul(s.seed,1664525)+1013904223)>>>0;return s.seed/4294967296;}
 function news(s,title,body,kind='info',buildingId=null){s.news.unshift({id:Math.round(s.t*100)+'-'+s.news.length,title,body,kind,buildingId,t:s.t});s.news=s.news.slice(0,30);}
@@ -45,7 +48,7 @@ function profit(s){return s.ledger.revenue-s.ledger.cogs-s.ledger.operating;}
 function freeStaff(s){return s.employees-s.buildings.reduce((n,b)=>n+b.staff,0);}
 function stageBuildings(s,stage){return s.buildings.filter(b=>TYPES[b.type].stage===stage);}
 function port(b){return {x:b.x+1,y:b.y+3};}
-const supply={x:4,y:10},dispatch={x:4,y:20};
+const sales={x:4,y:5},supply={x:4,y:10},dispatch={x:4,y:20};
 function blocked(s,x,y){return x<1||y<1||x>=WIDTH-1||y>=27||s.buildings.some(b=>x>=b.x&&x<b.x+3&&y>=b.y&&y<b.y+3);}
 function route(s,from,to){
  const key=`${s.routeVersion}:${from.x},${from.y}:${to.x},${to.y}`;if(s._cache?.[key])return s._cache[key];
@@ -66,13 +69,46 @@ function makeOffer(s,product=null,quantity=null,dueIn=null){
  const p=product||(['kintetsu','e235','odakyu','n700','panorama','freight','modular','precision'][Math.floor(rand(s)*8)]);
  const q=quantity||1+Math.floor(rand(s)*2);return {id:'o'+s.nextOrder++,product:p,quantity:q,deadline:s.t+(dueIn||(s.scenario==='surge'?160:240)+q*60),expires:s.t+110,status:'offer',created:s.t,unitSale:PRODUCTS[p].sale};
 }
-function accept(s,id){const o=s.offers.find(o=>o.id===id);if(!o||o.expires<s.t||s.failed)return {ok:false,message:'この商談の受付は終了しています。'};if(s.orders.filter(o=>o.status==='active').length>=10)return {ok:false,message:'進行中の受注は10件までです。'};s.offers=s.offers.filter(o=>o.id!==id);o.status='active';o.released=0;o.shipped=0;o.late=0;s.orders.push(o);news(s,PRODUCTS[o.product].name+'を'+o.quantity+'両受注','仕掛上限に空きができると自動で着工します。','good');return {ok:true,message:'受注しました。材料費は着工時に支払います。'};}
+function accept(s,id){const o=s.offers.find(o=>o.id===id);if(!o||o.expires<s.t||s.failed)return {ok:false,message:'この商談の受付は終了しています。'};if(s.orders.filter(o=>o.status==='active').length>=10)return {ok:false,message:'進行中の受注は10件までです。'};s.offers=s.offers.filter(o=>o.id!==id);o.status='active';o.released=0;o.shipped=0;o.late=0;s.orders.push(o);news(s,PRODUCTS[o.product].name+'を'+o.quantity+'両受注','仕掛上限に空きができると自動で着工します。','good');return {ok:true,message:'受注しました。営業から伝票を送り、設計完了後に材料を手配します。'};}
 function reject(s,id){s.offers=s.offers.filter(o=>o.id!==id);return {ok:true,message:'受注を見送りました。'};}
 function release(s){
- if(!s.releaseEnabled||wip(s)>=s.wipLimit||s.t-s.lastRelease<4||s.failed)return;
- const orders=s.orders.filter(o=>o.status==='active'&&o.released<o.quantity&&(o.releaseAt??0)<=s.t).sort((a,b)=>s.priority==='fifo'?a.created-b.created:a.deadline-b.deadline);
- for(const o of orders){const p=PRODUCTS[o.product];if(s.cash<p.cost)continue;const c=candidate(s,0,supply,o.id);if(!c)continue;
- const j={id:'j'+s.nextJob++,product:o.product,order:o.id,stage:0,started:s.t,deadline:o.deadline,materialCost:p.cost,status:'transfer',location:null,target:null};s.jobs.push(j);expense(s,p.cost,'materials');o.released++;travel(s,j,c.b.id,c.path);s.lastRelease=s.t;return;}
+ if(!s.releaseEnabled||wip(s)>=s.wipLimit||s.t-s.lastRelease<4-.000001||s.failed)return;
+ const orders=s.orders.filter(o=>o.status==='active'&&o.released<o.quantity&&(o.releaseAt??0)<=s.t+.000001).sort((a,b)=>s.priority==='fifo'?a.created-b.created:a.deadline-b.deadline);
+ for(const o of orders){const c=candidate(s,0,sales,o.id);if(!c)continue;
+ const j={id:'j'+s.nextJob++,product:o.product,order:o.id,stage:0,started:s.t,deadline:o.deadline,materialCost:0,materialPaid:false,cargo:'paper',status:'transfer',location:null,target:null};s.jobs.push(j);o.released++;travel(s,j,c.b.id,c.path);s.lastRelease=s.t;return;}
+}
+// Each lot is a paid, product-specific material kit. Reserving never buys it twice.
+function materialLead(s,product){return ({kintetsu:24,odakyu:28,e235:28,n700:40,panorama:32,freight:24,modular:30,precision:42}[product]||30)*(SCENARIOS[s.scenario].leadMultiplier||1);}
+function materialSummary(s,product=null){const lots=s.materials.filter(l=>!product||l.product===product),free=lots.filter(l=>!l.reservedFor),onHand=free.filter(l=>l.readyAt<=s.t).length,inbound=free.length-onHand;return {onHand,inbound,reserved:lots.length-free.length,stored:lots.filter(l=>l.readyAt<=s.t).length,slotsUsed:s.materials.filter(l=>!l.reservedFor).length,capacity:MATERIAL_CAPACITY,fee:lots.filter(l=>l.readyAt<=s.t).length*MATERIAL_STORAGE};}
+function materialCommitment(s){return PRODUCT_IDS.reduce((total,id)=>{const unpaid=s.orders.filter(o=>o.status==='active'&&o.product===id).reduce((n,o)=>n+o.quantity-o.shipped,0)-s.jobs.filter(j=>j.product===id&&j.materialPaid).length,stock=s.materials.filter(l=>l.product===id&&!l.reservedFor).length;return total+Math.max(0,unpaid-stock)*PRODUCTS[id].cost;},0);}
+function purchaseLot(s,product,reservedFor=null){const lot={id:'m'+s.nextMaterial++,product,cost:PRODUCTS[product].cost,orderedAt:s.t,readyAt:s.t+materialLead(s,product),reservedFor,advance:!reservedFor};s.materials.push(lot);expense(s,lot.cost,'materials');return lot;}
+function buyMaterials(s,product,quantity=1){
+ if(s.failed||!PRODUCTS[product]||!Number.isInteger(quantity)||quantity<1||quantity>3)return {ok:false,message:'先行手配は1〜3両分ずつ指定してください。'};
+ if(materialSummary(s).slotsUsed+quantity>MATERIAL_CAPACITY)return {ok:false,message:'先行在庫は入荷待ちを含め12両分までです。'};
+ const cost=PRODUCTS[product].cost*quantity;if(s.cash<cost)return {ok:false,message:'材料の購入資金が足りません。'};
+ for(let i=0;i<quantity;i++)purchaseLot(s,product);
+ news(s,PRODUCTS[product].name+'の材料を先行手配',materialLead(s,product)+'秒後に'+quantity+'両分が入荷。保管中は1両分につき0.18G / 秒。','info');
+ return {ok:true,message:quantity+'両分を手配しました。'+materialLead(s,product)+'秒後に入荷し、設計完了時に優先使用します。'};
+}
+function requestMaterials(s,j){
+ j.location='supply';j.target=null;j.cargo='materials';
+ if(j.materialPaid){j.materialReadyAt??=s.t;j.status=j.materialReadyAt<=s.t?'material_ready':'procurement';return;}
+ let lot=s.materials.filter(l=>l.product===j.product&&!l.reservedFor).sort((a,b)=>a.readyAt-b.readyAt)[0];
+ if(!lot){if(s.cash<PRODUCTS[j.product].cost||s.failed){j.status='material_funds';return;}lot=purchaseLot(s,j.product,j.id);}
+ lot.reservedFor=j.id;j.materialLot=lot.id;j.materialCost=lot.cost;j.materialPaid=true;j.materialReadyAt=lot.readyAt;j.status=lot.readyAt<=s.t?'material_ready':'procurement';
+ if(lot.advance){const saved=Math.max(0,materialLead(s,j.product)-Math.max(0,lot.readyAt-s.t));if(saved>STEP){s.metrics.stockUses++;s.metrics.materialLeadSaved+=saved;}}
+}
+function updateMaterials(s,dt){
+ const fee=s.materials.reduce((n,l)=>n+Math.max(0,s.t-Math.max(s.t-dt,l.readyAt))*MATERIAL_STORAGE,0);
+ expense(s,fee,'storage');s.ledger.storageMaterials+=fee;
+ const waiting=s.jobs.filter(j=>['material_funds','procurement','material_ready'].includes(j.status)).sort((a,b)=>s.priority==='fifo'?a.started-b.started:a.deadline-b.deadline);
+ for(const j of waiting){
+  if(j.status==='material_funds')requestMaterials(s,j);
+  if(j.status==='procurement'&&j.materialReadyAt<=s.t+.000001)j.status='material_ready';
+  if(j.status!=='material_ready')continue;
+  const c=candidate(s,1,supply,j.order);if(!c)continue;
+  s.materials=s.materials.filter(l=>l.id!==j.materialLot);j.materialDispatchedAt=s.t;travel(s,j,c.b.id,c.path);
+ }
 }
 function routeReady(s,j,b){
  const from=port(b);if(j.stage===4){const path=route(s,from,dispatch);if(!path)return false;travel(s,j,'dispatch',path);return true;}
@@ -92,6 +128,7 @@ function deliver(s,j){
 function step(s,dt=STEP){
  if(s.failed)return;if(!Number.isFinite(dt)||dt<=0||dt>1)throw Error('step accepts 0 < dt <= 1');s.t+=dt;
  s.events=s.events.filter(e=>e.until>s.t);s.effects=s.effects.filter(e=>s.t-e.t<4);
+ updateMaterials(s,dt);
  for(const j of [...s.jobs])if(j.status==='finished'){const duration=Math.max(0,Math.min(s.t,j.deadline)-Math.max(s.t-dt,j.finishedAt));const fee=duration*.9;expense(s,fee,'storage');s.ledger.storageFinished+=fee;if(s.t+.000001>=j.deadline)deliver(s,j);}
  for(const j of [...s.jobs])if(j.status==='transfer'){j.travel+=dt;if(j.travel>=j.travelTime){if(j.target==='dispatch'){j.status='finished';j.location='dispatch';j.target=null;j.finishedAt=s.t;if(s.t<j.deadline)news(s,PRODUCTS[j.product].name+'が完成', '納期まであと'+Math.ceil(j.deadline-s.t)+'秒。完成品倉庫で0.90G / 秒の保管料が発生します。','info');if(s.t+.000001>=j.deadline)deliver(s,j);continue;}const b=s.buildings.find(b=>b.id===j.target);j.status=b.type==='warehouse'?'buffer':'queue';j.location=b.id;j.target=null;b.queue.push(j.id);}}
  const protective=s.buildings.filter(b=>b.type==='maintenance'&&b.staff>0).length>0;
@@ -102,7 +139,7 @@ function step(s,dt=STEP){
   if(b.active){const j=s.jobs.find(j=>j.id===b.active);if(j.status==='blocked'){if(routeReady(s,j,b)){b.active=null;b.progress=0;}else b.blockedTime+=dt;continue;}}
   if(!b.active&&b.queue.length&&!b.broken&&b.staff&&b.repairRemaining<=0){b.queue.sort((a,c)=>{const ja=s.jobs.find(j=>j.id===a),jc=s.jobs.find(j=>j.id===c);return s.priority==='fifo'?ja.started-jc.started:ja.deadline-jc.deadline;});b.active=b.queue.shift();const j=s.jobs.find(j=>j.id===b.active);j.status='work';b.progress=0;}
   if(b.active&&!b.broken&&b.staff){const j=s.jobs.find(j=>j.id===b.active);b.progress+=dt*speed(s,b);b.busyTime+=dt;b.condition=Math.max(0,b.condition-dt*(protective?.035:.075));if(b.condition<=0){b.broken=true;news(s,TYPES[b.type].short+'が故障','設備を選んで修理してください。','alert',b.id);continue;}
-   if(b.progress>=PRODUCTS[j.product].work[j.stage]){b.completed++;j.stage++;j.status='blocked';if(routeReady(s,j,b)){b.active=null;b.progress=0;}}}
+   if(b.progress>=PRODUCTS[j.product].work[j.stage]){b.completed++;j.stage++;if(j.stage===1){j.designFinishedAt=s.t;requestMaterials(s,j);b.active=null;b.progress=0;}else{j.cargo=j.stage>=4?'train':'wip';j.status='blocked';if(routeReady(s,j,b)){b.active=null;b.progress=0;}}}}
  }
  const wages=s.employees*.48*dt,upkeep=s.buildings.reduce((a,b)=>a+TYPES[b.type].upkeep*b.level,0)*dt,stock=s.jobs.filter(j=>j.status==='buffer').length*.25*dt,floor=s.jobs.filter(j=>['queue','blocked'].includes(j.status)).length*.6*dt;
  expense(s,wages,'wages');expense(s,upkeep,'upkeep');expense(s,stock+floor,'storage');s.ledger.storageIntermediate+=stock;s.ledger.storageFloor+=floor;release(s);
@@ -123,7 +160,7 @@ function buildCheck(s,type,x,y){
  if(!TYPES[type])return {ok:false,message:'設備の種類が不明です。'};if(!Number.isInteger(x)||!Number.isInteger(y)||x<2||y<2||x+3>WIDTH-2||y+3>26)return {ok:false,message:'工場用地の中に配置してください。'};
  if(!s.expanded&&(x+3>24||y+3>23))return {ok:false,message:'この区画は用地拡張で開放されます。'};
  if(s.buildings.some(b=>x<b.x+4&&x+4>b.x&&y<b.y+4&&y+4>b.y))return {ok:false,message:'設備と搬入口の間を1マス以上空けてください。'};
- if([supply,dispatch].some(p=>p.x>=x-1&&p.x<x+4&&p.y>=y-1&&p.y<y+4))return {ok:false,message:'搬入・出荷ゲートには建設できません。'};
+ if([sales,supply,dispatch].some(p=>p.x>=x-1&&p.x<x+4&&p.y>=y-1&&p.y<y+4))return {ok:false,message:'営業窓口・資材置場・出荷口には建設できません。'};
  if(s.buildings.length>=36)return {ok:false,message:'試作版は設備36棟までです。'};
  return {ok:true,message:'ここに建設できます。'};
 }
@@ -136,11 +173,12 @@ function upgrade(s,id){const b=s.buildings.find(b=>b.id===id);if(!b||b.level>=3)
 function upgradeCost(b){return Math.round(TYPES[b.type].cost*.55*b.level);}
 function expand(s){if(s.expanded)return {ok:false,message:'用地はすべて開放済みです。'};if(s.cash<6000)return {ok:false,message:'用地取得費6,000Gが足りません。'};expense(s,6000,'capex');s.expanded=true;return {ok:true,message:'東・北の区画を開放しました。マップを移動して建設できます。'};}
 function demolish(s,id){const b=s.buildings.find(b=>b.id===id);if(!b)return {ok:false,message:'設備が見つかりません。'};if(b.active||b.queue.length||incoming(s,id)||b.repairRemaining)return {ok:false,message:'作業・待ち・運搬・保全が完了してから撤去できます。'};const stage=TYPES[b.type].stage;if(stage!==null&&stageBuildings(s,stage).length===1)return {ok:false,message:'各工程に最低1棟必要です。先に代わりを建ててください。'};const spent=TYPES[b.type].cost+(b.level>=2?Math.round(TYPES[b.type].cost*.55):0)+(b.level>=3?Math.round(TYPES[b.type].cost*1.1):0),refund=Math.round(spent*.35);s.cash+=refund;s.ledger.capex-=refund;s.buildings=s.buildings.filter(x=>x.id!==id);s.routeVersion++;s._cache={};for(const routes of [s.routeDefaults,...s.orders.map(o=>o.routes)])if(routes)for(const stage of Object.keys(routes))if(routes[stage]===id)delete routes[stage];return {ok:true,message:refund.toLocaleString()+'Gを回収しました。配置人員は未配置に戻ります。'};}
-function measure(s,key){switch(key){case'profit':return Math.floor(profit(s));case'warehouses':return s.buildings.filter(b=>b.type==='warehouse').length;case'productionBuildings':return s.buildings.filter(b=>TYPES[b.type].stage!==null).length;case'expanded':return +s.expanded;default:return s.metrics[key]||0;}}
+function measure(s,key){switch(key){case'profit':return Math.floor(profit(s));case'designBuildings':return s.buildings.filter(b=>b.type==='design').length;case'warehouses':return s.buildings.filter(b=>b.type==='warehouse').length;case'productionBuildings':return s.buildings.filter(b=>TYPES[b.type].stage!==null).length;case'expanded':return +s.expanded;default:return s.metrics[key]||0;}}
 function mission(s){
  let m;if(s.scenario==='coast')m=CHAPTERS[Math.min(s.chapter,3)];
  else if(s.scenario==='surge')m={title:'波を乗りこなす工場長',reward:7000,hint:'受けすぎない勇気も必要。仕掛上限と納期順で流れを整えます。',lesson:'受注残と仕掛は別物です。製造中の数を抑えると、現場の待ちが短くなります。',goals:[['delivered',20,'累計出荷','両'],['profit',18000,'累計営業利益','G']]};
  else if(s.scenario==='rescue')m={title:'もう一度、動き出す工場',reward:7000,hint:'赤い加工工場を修理。検査工場の状態にも注意してください。',lesson:'目の前の故障と次の故障は別に備えます。余力と予防保全が復旧後の安定をつくります。',goals:[['repairs',2,'修理完了','回'],['delivered',12,'累計出荷','両'],['profit',8000,'累計営業利益','G']]};
+ else if(SCENARIOS[s.scenario].goals)m={title:SCENARIOS[s.scenario].name,reward:6000,hint:SCENARIOS[s.scenario].hint,lesson:'伝票・材料・人員・納期をつないで、ひとつの生産計画を実現しました。',goals:SCENARIOS[s.scenario].goals};
  else return {title:'思い描いた工場を、自由に。',hint:'建設・雇用・物流を自由に実験できます。',goals:[],ready:false,complete:false};
  return {...m,goals:m.goals.map(([key,target,label,unit])=>({key,target,label,unit,value:measure(s,key)})),ready:!s.completedScenario&&m.goals.every(([key,target])=>measure(s,key)>=target),complete:s.completedScenario};
 }
@@ -148,10 +186,13 @@ function claim(s){const m=mission(s);if(!m.ready)return {ok:false,message:'ま�
 function summary(s){return {profit:profit(s),wip:wip(s),freeStaff:freeStaff(s),ontime:s.metrics.delivered?s.metrics.ontime/s.metrics.delivered:1,rate:s.shipping.filter(e=>s.t-e.t<=60).length,averageCycle:s.metrics.delivered?s.metrics.cycleTotal/s.metrics.delivered:0,finishedStock:s.jobs.filter(j=>j.status==='finished').length,floorStock:s.jobs.filter(j=>['queue','blocked'].includes(j.status)).length,warehouseStock:s.jobs.filter(j=>j.status==='buffer').length,warehouseCapacity:s.buildings.filter(b=>b.type==='warehouse').reduce((n,b)=>n+6*b.level,0)};}
 function status(s,b){if(b.repairRemaining)return {label:b.preventive?'予防保全中':'修理中',kind:'repair'};if(b.broken)return {label:'故障停止',kind:'broken'};if(b.type==='warehouse')return {label:`保管 ${b.queue.length} / ${6*b.level}`,kind:b.queue.length>=6*b.level?'blocked':'storage'};if(b.type==='maintenance')return {label:b.staff?'予防支援中':'人員未配置',kind:b.staff?'working':'idle'};if(!b.staff)return {label:'人員未配置',kind:'idle'};const j=s.jobs.find(j=>j.id===b.active);if(j?.status==='blocked')return {label:'後工程待ち',kind:'blocked'};if(b.active)return {label:'作業中',kind:'working'};return {label:b.queue.length?'順番待ち':'受入待ち',kind:'idle'};}
 function serialize(s){const c=clone({...s,_cache:undefined});return JSON.stringify(c);}
-function restore(raw){let s;try{s=JSON.parse(raw);}catch(_){throw Error('保存データを読み込めません。');}if(!s||![1,VERSION].includes(s.version)||!SCENARIOS[s.scenario]||!Array.isArray(s.buildings)||!Array.isArray(s.jobs)||!Array.isArray(s.orders)||!Array.isArray(s.offers)||!s.ledger||!s.metrics||!Array.isArray(s.news))throw Error('対応していない保存データです。');
+function restore(raw){let s;try{s=JSON.parse(raw);}catch(_){throw Error('保存データを読み込めません。');}if(!s||![1,2,VERSION].includes(s.version)||!SCENARIOS[s.scenario]||!Array.isArray(s.buildings)||!Array.isArray(s.jobs)||!Array.isArray(s.orders)||!Array.isArray(s.offers)||!s.ledger||!s.metrics||!Array.isArray(s.news))throw Error('対応していない保存データです。');
  if(!Number.isFinite(s.cash)||!Number.isFinite(s.t)||s.buildings.length>36||s.jobs.length>100||s.orders.length>10000)throw Error('保存データの値が不正です。');
  const ids=new Set(s.buildings.map(b=>b.id));if(ids.size!==s.buildings.length||s.buildings.some(b=>!TYPES[b.type]||!Number.isInteger(b.x)||!Number.isInteger(b.y)||!Array.isArray(b.queue)||!Number.isInteger(b.staff)||b.staff<0||b.staff>4))throw Error('設備データが不正です。');
- if(s.jobs.some(j=>!PRODUCTS[j.product]||!Number.isInteger(j.stage)||j.stage<0||j.stage>4||!['work','queue','buffer','blocked','transfer','finished'].includes(j.status)))throw Error('車両データが不正です。');s.routeDefaults??={};s.ledger.storageIntermediate??=s.ledger.storage;s.ledger.storageFloor??=0;s.ledger.storageFinished??=0;s.version=VERSION;s._cache={};return s;}
+ if(s.jobs.some(j=>!PRODUCTS[j.product]||!Number.isInteger(j.stage)||j.stage<0||j.stage>4||!['work','queue','buffer','blocked','transfer','finished','procurement','material_ready','material_funds'].includes(j.status)))throw Error('車両データが不正です。');s.routeDefaults??={};s.ledger.storageIntermediate??=s.ledger.storage;s.ledger.storageFloor??=0;s.ledger.storageFinished??=0;s.ledger.storageMaterials??=0;
+ if(s.version<3){s.materials=[];s.nextMaterial=1;for(const j of s.jobs){j.materialPaid=true;j.cargo=j.stage===0?'paper':j.stage>=4?'train':'wip';}s.metrics.stockUses=0;s.metrics.materialLeadSaved=0;}
+ if(!Array.isArray(s.materials)||s.materials.length>112||!Number.isInteger(s.nextMaterial)||s.nextMaterial<1||s.materials.some(l=>!PRODUCTS[l.product]||!Number.isFinite(l.cost)||l.cost<0||!Number.isFinite(l.readyAt)||l.readyAt<0))throw Error('資材データが不正です。');
+ s.version=VERSION;s._cache={};return s;}
 
 // Explicit choices apply at the next dispatch; committed transfers and work are preserved.
 function setRoute(s,orderId,stage,buildingId){
@@ -164,7 +205,7 @@ function setRoute(s,orderId,stage,buildingId){
 }
 function park(s,id){
  const j=s.jobs.find(j=>j.id===id),b=s.buildings.find(b=>b.id===j?.location);
- if(!j||j.stage>=4||!['queue','blocked'].includes(j.status)||!b)return {ok:false,message:'作業前または工程完了後の待ち車両を退避できます。'};
+ if(!j||j.stage===0||j.stage>=4||!['queue','blocked'].includes(j.status)||!b)return {ok:false,message:'作業前または工程完了後の待ち車両を退避できます。'};
  const c=s.buildings.filter(w=>w.type==='warehouse'&&room(s,w)>0).map(w=>({b:w,path:route(s,port(b),port(w))})).filter(c=>c.path).sort((a,b)=>a.path.length-b.path.length)[0];
  if(!c)return {ok:false,message:'空きのある中間倉庫が必要です。'};
  b.queue=b.queue.filter(v=>v!==id);if(b.active===id){b.active=null;b.progress=0;}
@@ -172,6 +213,6 @@ function park(s,id){
 }
 function resumeJob(s,id){const j=s.jobs.find(j=>j.id===id);if(!j?.held)return {ok:false,message:'出庫を止めている車両はありません。'};j.held=false;return {ok:true,message:'空いた後工程へ出庫を再開します。'};}
 
-function setRelease(s,id,delay){const o=s.orders.find(o=>o.id===id&&o.status==='active');if(!o||!Number.isFinite(delay)||delay<0||delay>1800)return {ok:false,message:'着工待ち時間は0〜1800秒で指定してください。'};o.releaseAt=s.t+delay;return {ok:true,message:delay?'今から'+delay+'秒後以降に着工します。':'次の空き枠から着工します。'};}
-const api={setRelease,setRoute,park,resumeJob,STEP,WIDTH,HEIGHT,VERSION,TYPES,PRODUCTS,PRODUCT_IDS,SCENARIOS,CHAPTERS,supply,dispatch,create,step,route,port,makeOffer,accept,reject,build,buildCheck,assign,hire,dismiss,repair,upgrade,upgradeCost,expand,demolish,claim,mission,summary,status,profit,wip,freeStaff,incoming,speed,serialize,restore,triggerEvent,news};root.YardSim=api;if(typeof module==='object'&&module.exports)module.exports=api;
+function setRelease(s,id,delay){const o=s.orders.find(o=>o.id===id&&o.status==='active');if(!o||!Number.isFinite(delay)||delay<0||delay>1800)return {ok:false,message:'着工待ち時間は0〜1800秒で指定してください。'};if(o.released>=o.quantity)return {ok:false,message:'この受注は全両着工済みです。予約は未着工分に適用されます。'};o.releaseAt=s.t+delay;return {ok:true,message:'未着工の'+(o.quantity-o.released)+'両を'+(delay?'今から'+delay+'秒後以降に着工します。':'次の空き枠から着工します。')};}
+const api={materialCommitment,materialLead,materialSummary,buyMaterials,MATERIAL_CAPACITY,MATERIAL_STORAGE,sales,setRelease,setRoute,park,resumeJob,STEP,WIDTH,HEIGHT,VERSION,TYPES,PRODUCTS,PRODUCT_IDS,SCENARIOS,CHAPTERS,supply,dispatch,create,step,route,port,makeOffer,accept,reject,build,buildCheck,assign,hire,dismiss,repair,upgrade,upgradeCost,expand,demolish,claim,mission,summary,status,profit,wip,freeStaff,incoming,speed,serialize,restore,triggerEvent,news};root.YardSim=api;if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

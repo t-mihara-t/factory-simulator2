@@ -5,10 +5,10 @@ function advance(s,seconds){for(let i=0;i<Math.round(seconds/S.STEP);i++)S.step(
 function quiet(s){s.nextEvent=Number.MAX_SAFE_INTEGER;s.nextOffer=Number.MAX_SAFE_INTEGER;s.offers=[];return s;}
 function alternate(s){const r=S.build(s,'design',18,7);assert(r.ok);assert(S.assign(s,r.id,1).ok);assert(S.assign(s,r.id,1).ok);return r.id;}
 test('early completion waits for due shipment, charges storage, and releases manufacturing WIP',()=>{
- const s=quiet(S.create());advance(s,99);assert.equal(s.metrics.delivered,0);assert(s.jobs.some(j=>j.status==='finished'));assert(s.ledger.storageFinished>0);assert.equal(s.ledger.cogs,0);assert(S.wip(s)<s.jobs.length);
+ const s=quiet(S.create());advance(s,139);assert.equal(s.metrics.delivered,0);assert(s.jobs.some(j=>j.status==='finished'));assert(s.ledger.storageFinished>0);assert.equal(s.ledger.cogs,0);assert(S.wip(s)<s.jobs.length);
  advance(s,1);assert.equal(s.metrics.delivered,1);assert.equal(s.metrics.late,0);assert(s.ledger.cogs>0);
  advance(s,5);assert.equal(s.jobs.filter(j=>j.status==='finished').length,2);const cost=s.ledger.storageFinished;advance(s,10);assert(Math.abs(s.ledger.storageFinished-cost-18)<1e-6);
- advance(s,50);assert.equal(s.metrics.delivered,3);assert.equal(s.jobs.length,0);assert(Math.abs(s.ledger.storage-s.ledger.storageFinished-s.ledger.storageFloor-s.ledger.storageIntermediate)<1e-6);
+ advance(s,80);assert.equal(s.metrics.delivered,3);assert.equal(s.jobs.length,0);assert(Math.abs(s.ledger.storage-s.ledger.storageFinished-s.ledger.storageFloor-s.ledger.storageIntermediate-s.ledger.storageMaterials)<1e-6);
 });
 test('hiring is charged once and all employees incur ongoing wages even when unassigned',()=>{
  const s=S.create();s.releaseEnabled=false;const cash=s.cash;assert(S.hire(s).ok);assert.equal(s.cash,cash-350);assert.equal(s.employees,11);advance(s,10);assert(Math.abs(s.ledger.wages-11*.48*10)<1e-6);assert(S.dismiss(s).ok);assert.equal(s.ledger.service,550);const w=s.ledger.wages;advance(s,10);assert(Math.abs(s.ledger.wages-w-10*.48*10)<1e-6);
@@ -34,8 +34,8 @@ test('Gantt uses the selected parallel resource and reports unrepaired or held w
  S.setRoute(s,null,0,'b1');s.buildings[0].broken=true;const stuck=P.predict(s);assert(stuck.rows.every(r=>!r.shipped&&r.warning));assert(stuck.rows.every(r=>!r.spans.some(b=>b.kind==='work')));
 });
 test('release reservations delay material spending and flow through the same forecast',()=>{
- const s=quiet(S.create()),o=s.orders[0];s.orders=s.orders.slice(0,1);assert(S.setRelease(s,o.id,60).ok);const plan=P.predict(s);assert(plan.rows[0].spans[0].start>=60);advance(s,59);assert.equal(s.ledger.materials,0);advance(s,2);assert(s.ledger.materials>0);assert.equal(S.setRelease(s,o.id,-1).ok,false);
+ const s=quiet(S.create()),o=s.orders[0];s.orders=s.orders.slice(0,1);assert(S.setRelease(s,o.id,60).ok);const plan=P.predict(s);assert(plan.rows[0].spans[0].start>=60-S.STEP);advance(s,59);assert.equal(s.ledger.materials,0);advance(s,2);assert.equal(s.ledger.materials,0);assert.equal(s.jobs[0].cargo,'paper');advance(s,20);assert(s.ledger.materials>0);assert.equal(S.setRelease(s,o.id,-1).ok,false);
 });
-test('v1 saves migrate without changing cash; v2 routing, reservations and inventory survive reload',()=>{
- const old=S.create();old.version=1;delete old.routeDefaults;delete old.ledger.storageFloor;delete old.ledger.storageFinished;delete old.ledger.storageIntermediate;const restored=S.restore(JSON.stringify(old));assert.equal(restored.version,2);assert.equal(restored.cash,old.cash);assert.equal(restored.ledger.storageFinished,0);const b=alternate(restored);S.setRoute(restored,null,0,b);S.setRelease(restored,restored.orders[0].id,40);assert.equal(S.serialize(S.restore(S.serialize(restored))),S.serialize(restored));
+test('v1 saves migrate without changing cash; v3 routing, reservations and inventory survive reload',()=>{
+ const old=S.create();old.version=1;delete old.routeDefaults;delete old.ledger.storageFloor;delete old.ledger.storageFinished;delete old.ledger.storageIntermediate;const restored=S.restore(JSON.stringify(old));assert.equal(restored.version,3);assert.equal(restored.cash,old.cash);assert.equal(restored.ledger.storageFinished,0);const b=alternate(restored);S.setRoute(restored,null,0,b);S.setRelease(restored,restored.orders[0].id,40);assert.equal(S.serialize(S.restore(S.serialize(restored))),S.serialize(restored));
 });

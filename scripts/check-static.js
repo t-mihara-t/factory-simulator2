@@ -11,4 +11,4 @@ for(const asset of ['assets/process-atlas-v02.png','assets/factory-buildings.png
 assert(!fs.readFileSync(path.join(root,'style.css'),'utf8').includes('@import'));
 console.log('Static entrypoints, controls and local assets verified.');
 
-assert(!html.includes('class="brand"'));assert(html.includes('id="inspector"'));assert(app.includes('PERFECT<br>SCHEDULE')&&app.includes('GAME OVER'));
+assert(!html.includes('class="brand"'));assert(html.includes('id="inspector"'));assert(app.includes('Perfect Schedule')&&app.includes('Game Over'));for(const name of ['perfect-schedule.png','game-over.png','order-slip.png'])assert(fs.existsSync(path.join(root,'assets',name)));
