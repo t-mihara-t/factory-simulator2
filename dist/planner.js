@@ -4,7 +4,7 @@ const S=root.YardSim||(typeof require==='function'?require('./simulation.js'):nu
 function* calculate(state,options={}){
  const s=S.restore(S.serialize(state)),origin=s.t;
  const horizon=Math.min(3600,Math.max(600,...s.orders.filter(o=>o.status==='active').flatMap(o=>[o.deadline-origin+300,(o.releaseAt||origin)-origin+600])));
- s.offers=[];s.nextOffer=Number.MAX_SAFE_INTEGER;s.nextEvent=Number.MAX_SAFE_INTEGER;
+ s.offers=[];s.nextOffer=Number.MAX_SAFE_INTEGER;s.nextEvent=Number.MAX_SAFE_INTEGER;s.nextDecision=Number.MAX_SAFE_INTEGER;s.tutorial.step='done';
  const rows=new Map(),seen=new Map(),existing=new Set(state.jobs.map(j=>j.id));let ticks=0;
  function observe(){
   for(const j of s.jobs){
@@ -26,16 +26,16 @@ function* calculate(state,options={}){
  }
  observe();
  while(!s.failed&&s.t-origin<horizon&&s.orders.some(o=>o.status==='active')){
-  S.step(s);observe();if(++ticks%250===0)yield {progress:(s.t-origin)/horizon};
+  S.step(s);observe();if(s.jobs.length&&s.jobs.every(j=>j.status==='finished'&&s.orders.find(o=>o.id===j.order)?.autoShip===false)&&s.orders.every(o=>o.released===o.quantity))break;if(++ticks%250===0)yield {progress:(s.t-origin)/horizon};
  }
  for(const o of state.orders.filter(o=>o.status==='active')){
   const missing=o.quantity-o.shipped-(seen.get(o.id)||0);
   for(let n=0;n<missing;n++)rows.set(o.id+'-pending-'+n,{id:o.id+'-pending-'+n,order:o.id,product:o.product,deadline:o.deadline-origin,start:null,releaseAt:Math.max(0,(o.releaseAt||origin)-origin),spans:[],shipped:false});
  }
  const result=[...rows.values()];
- for(const row of result)if(!row.shipped)row.warning=s.failed?'予測中に資金不足':!state.releaseEnabled&&!row.spans.length?'自動着工が停止中':row.spans.some(x=>x.key.endsWith(':true'))?'手動退避中：出庫再開が必要':row.spans.some(x=>x.kind==='material_funds')?'材料の購入資金待ち':'人員・経路・保全・待ち枠を確認（'+Math.round(horizon/60)+'分先まで予測）';
+ for(const row of result)if(!row.shipped)row.warning=row.spans.some(b=>b.kind==='finished')&&state.orders.find(o=>o.id===row.order)?.autoShip===false?'完成後に出荷操作が必要':s.failed?'予測中に資金不足':!state.releaseEnabled&&!row.spans.length?'自動着工が停止中':row.spans.some(x=>x.key.endsWith(':true'))?'手動退避中：出庫再開が必要':row.spans.some(x=>x.kind==='material_funds')?'材料の購入資金待ち':'人員・経路・保全・待ち枠を確認（'+Math.round(horizon/60)+'分先まで予測）';
  result.sort((a,b)=>a.deadline-b.deadline||a.order.localeCompare(b.order)||(a.start??Infinity)-(b.start??Infinity));
- return {origin,horizon:Math.min(horizon,s.t-origin),rows:result,failed:s.failed,ticks,assumptions:'受注済みのみ・現在の人員と経路で予測。着工予約、営業からの伝票、設計後の材料リードタイム、先行在庫と入荷待ち、運搬、待ち枠、保管料、材料費、給与、設備劣化、開始済み修理を反映。今後の商談・ランダムイベント・追加の修理操作は含みません。'};
+ return {origin,horizon:Math.min(horizon,s.t-origin),rows:result,failed:s.failed,ticks,assumptions:'受注済みのみ・現在の人員と経路で予測。着工予約、営業からの伝票、設計後の材料リードタイム、先行在庫と入荷待ち、運搬、待ち枠、保管料、材料費、給与、設備劣化、開始済み修理を反映。今後の商談・ランダムイベント・追加の修理操作・前倒し出荷は含みません。出荷操作待ちの車両は売上にしません。'};
 }
 function predict(s){const it=calculate(s);let r;do{r=it.next();}while(!r.done);return r.value;}
 const api={calculate,predict};root.YardPlanner=api;if(typeof module==='object'&&module.exports)module.exports=api;

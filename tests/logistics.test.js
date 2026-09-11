@@ -42,7 +42,7 @@ test('after a partial launch only unreleased units are rescheduled; started work
 
 test('v2 paid design jobs migrate without a second material bill or cash change',()=>{
  const s=single();S.step(s);const j=s.jobs[0],cost=S.PRODUCTS[j.product].cost;j.materialCost=cost;delete j.materialPaid;s.ledger.materials=cost;s.cash-=cost;s.version=2;delete s.materials;delete s.nextMaterial;delete s.ledger.storageMaterials;
- const migrated=S.restore(S.serialize(s));assert.equal(migrated.cash,s.cash);assert.equal(migrated.version,3);assert.equal(migrated.jobs[0].materialPaid,true);advance(migrated,230);assert.equal(migrated.metrics.delivered,1);assert.equal(migrated.ledger.materials,cost);assert.equal(migrated.ledger.cogs,cost);
+ const migrated=S.restore(S.serialize(s));assert.equal(migrated.cash,s.cash);assert.equal(migrated.version,S.VERSION);assert.equal(migrated.jobs[0].materialPaid,true);advance(migrated,230);assert.equal(migrated.metrics.delivered,1);assert.equal(migrated.ledger.materials,cost);assert.equal(migrated.ledger.cogs,cost);
 });
 
 test('finished storage retains and bills all vehicles beyond the three displayed icons',()=>{
