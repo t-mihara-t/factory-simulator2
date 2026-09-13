@@ -45,14 +45,14 @@ test('opening offers an automatic demo that completes and returns to the untouch
  assert(!a.ids.get('opening').hidden);assert(!a.ids.get('modal').open);a.run(2);assert.equal(a.saved(),raw);assert.equal(a.state().t,old.t);
  a.click('[data-opening="demo"]','opening');assert(a.ids.get('opening').hidden);assert(a.ids.get('modal').open);assert.equal(a.ids.get('modal').dataset.panel,'layout');
  a.run(14);const paused=S.serialize(a.state());a.click('[data-demo="pause"]','demo-bar');a.run(3);assert.equal(S.serialize(a.state()),paused);a.click('[data-demo="pause"]','demo-bar');
- a.run(18);assert.equal(a.state().metrics.delivered,1);assert.equal(a.ids.get('modal').dataset.panel,'demoFinish');assert.equal(a.saved(),raw);assert.equal(a.writes.filter(([k])=>k===SAVE).length,0);
+ a.run(21);assert.equal(a.state().metrics.delivered,1);assert.equal(a.ids.get('modal').dataset.panel,'demoFinish');assert.equal(a.saved(),raw);assert.equal(a.writes.filter(([k])=>k===SAVE).length,0);
  a.click('[data-opening="back"]','modal-body');assert(!a.ids.get('opening').hidden);a.click('[data-opening="continue"]','opening');assert.equal(S.serialize(a.state()),raw);a.run(1);assert(a.state().t>old.t);
 });
 test('interactive opening starts the real tutorial; management tabs switch without advancing game time',()=>{
  const a=app();a.click('[data-opening="tutorial"]','opening');assert.equal(a.ids.get('modal').dataset.panel,'layout');assert(!a.ids.get('game').inert);
  a.click('[data-action="configure"]','modal-body');assert.equal(a.ids.get('modal').dataset.panel,'orders');a.click('[data-action="accept"]','modal-body');assert.equal(a.ids.get('modal').dataset.panel,'flow');a.click('[data-action="tutorialContinue"]','modal-body');a.run(4);
  assert.equal(a.state().tutorial.step,'funding');assert.equal(a.ids.get('modal').dataset.panel,'finance');const t=a.state().t;a.click('[data-panel="staff"]','modal-tabs');a.run(2);assert.equal(a.state().t,t);a.click('[data-panel="finance"]','modal-tabs');
- a.click('[data-action="tutorialContinue"]','modal-body');a.run(20);assert.equal(a.ids.get('modal').dataset.panel,'shipping');assert.equal(a.state().ledger.revenue,0);a.click('[data-action="ship"]','modal-body');assert.equal(a.state().ledger.revenue,4300);assert.equal(a.ids.get('modal').dataset.panel,'finance');
+ a.click('[data-action="tutorialContinue"]','modal-body');a.run(20);assert.equal(a.ids.get('modal').dataset.panel,'shipping');assert.equal(a.state().ledger.revenue,0);assert(!a.ids.get('modal-body').querySelector('[data-action="ship"]'));assert(a.ids.get('modal-body').innerHTML.includes('前倒し出荷は禁止'));assert(a.ids.get('modal-body').innerHTML.includes('着工予約'));a.click('[data-action="tutorialContinue"]','modal-body');assert(a.state().t>=160-S.STEP);assert.equal(a.state().ledger.revenue,4300);assert.equal(a.ids.get('modal').dataset.panel,'finance');
  a.click('[data-action="tutorialContinue"]','modal-body');assert.equal(a.state().tutorial.step,'done');assert.equal(S.restore(a.saved()).metrics.delivered,1);
 });
 test('new tutorial replacement is explicit and backgrounding a demo never overwrites a save',()=>{

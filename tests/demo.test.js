@@ -11,7 +11,7 @@ test('automatic demo visits every lesson, finishes within 35 seconds, and books 
  }
  assert.deepEqual(seen,['layout','order','launch','watch','funding','manufacture','shipping','debrief']);
  assert(d.finished);assert.equal(d.error,null);assert.equal(s.tutorial.step,'done');assert.equal(s.metrics.delivered,1);
- assert.equal(s.ledger.revenue,4300);assert.equal(s.ledger.materials,2850);assert.equal(s.ledger.cogs,2850);assert.equal(s.ledger.freight,0);
+ assert.equal(s.ledger.revenue,4300);assert.equal(s.ledger.materials,2850);assert.equal(s.ledger.cogs,2850);assert.equal(s.ledger.freight,0);assert(Math.abs(s.t-160)<S.STEP);assert(Math.abs(s.ledger.storageFinished-65.25)<1e-5);assert(s.transactions.filter(x=>x.category==='revenue').every(x=>x.t>=160-.000001));
  assert(Math.abs(s.cash-(s.initialCash+s.ledger.revenue+s.ledger.rewards-s.ledger.materials-s.ledger.operating-s.ledger.capex))<1e-5);
  const snapshot=S.serialize(s);D.tick(s,d,20);assert.equal(S.serialize(s),snapshot);
  console.log('DEMO_TIMING',JSON.stringify({realSeconds:+d.elapsed.toFixed(2),gameSeconds:+s.t.toFixed(1)}));
@@ -29,7 +29,7 @@ test('automatic pace accelerates safe waiting and slows for actual decisions',()
  job.deadline=s.t+8;assert.equal(D.pace(s),2);job.deadline=s.t+150;
  job.status='material_funds';assert.equal(D.pace(s),2);job.status='work';job.held=true;assert.equal(D.pace(s),2);job.held=false;
  s.buildings[0].broken=true;assert.equal(D.pace(s),2);s.buildings[0].broken=false;s.decision={id:'d'};assert.equal(D.pace(s),2);s.decision=null;
- s.tutorial.step='done';s.offers=[{expires:s.t+9}];assert.equal(D.pace(s),2);s.offers=[];job.status='finished';assert.equal(D.pace(s),2);
+ s.tutorial.step='done';s.offers=[{expires:s.t+9}];assert.equal(D.pace(s),2);s.offers=[];job.status='finished';assert.equal(D.pace(s),8);
  s.failed=true;assert.equal(D.pace(s),0);
 });
 test('manual tutorial waiting is accelerated without passing payment or shipping gates',()=>{
