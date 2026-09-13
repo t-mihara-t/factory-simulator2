@@ -6,9 +6,9 @@ const TUTORIAL={
  layout:{n:1,title:'工場の編成を決めよう',body:'各工程を1〜3並列で設計。増やすほど同時に作れますが、設備維持費と給与も増えます。',panel:'layout',cta:'最初のラインを編成'},
  order:{n:2,title:'最初の1両を受注しよう',body:'受注は約束。ここでは支払いも入金もありません。まず観光旅客車を1両引き受けましょう。',panel:'orders',cta:'商談を開く'},
  launch:{n:3,title:'受注伝票を設計へ送ろう',body:'材料はまだ買いません。設計のあとに発注し、到着した材料を加工へ運びます。',panel:'flow',cta:'生産計画を確認'},
- watch:{n:3,title:'伝票が到着。設計が始まる！',body:'「次の変化まで」で、着工や工程完了まで進められます。大切な場面では時間が止まります。',panel:'flow',cta:'計画を見る'},
+ watch:{n:3,title:'伝票が到着。設計が始まる！',body:'運搬中は8×、作業中は4×で進行。「次の判断まで」も使えます。材料購入や出荷の説明では自動停止。',panel:'flow',cta:'計画を見る'},
  funding:{n:4,title:'材料を発注して、お金が減った',body:'この1両の材料費は2,850G。手配した時点で現金を支払います。ここまで売上は0G。給与・維持費もゲーム時間に応じて掛かります。',panel:'finance',cta:'お金の流れを見る'},
- manufacture:{n:4,title:'完成へ。次に詰まる工程は？',body:'工程カードから人員や並列数を確認できます。「次の変化まで」で材料到着や作業完了を追いましょう。',panel:'flow',cta:'工程を調整'},
+ manufacture:{n:4,title:'完成へ。次に詰まる工程は？',body:'工程カードから人員や並列数を確認できます。「次の判断まで」で材料到着や作業完了を追いましょう。',panel:'flow',cta:'工程を調整'},
  shipping:{n:5,title:'完成した。でも、売上はまだ0G',body:'完成品倉庫で保管中です。「工場出荷する」を押し、出荷口を通過させて初めて売上が入ります。',panel:'shipping',cta:'最初の工場出荷へ'},
  debrief:{n:6,title:'初出荷！ 4,300Gが入金された',body:'現金は材料発注で減り、工場出荷で増えます。次は自分で受注・編成・着工時刻をつなぎましょう。',panel:'finance',cta:'入金を確認'}
 };
@@ -88,9 +88,9 @@ function attention(s){
  if(s.jobs.some(j=>j.status==='material_funds'))return {title:'材料の購入資金が不足',detail:'完成品の出荷や投資を見直しましょう。',panel:'finance'};
  const bottleneck=loads(s).sort((a,b)=>b.seconds-a.seconds)[0];if(bottleneck.waiting>=2)return {title:S.TYPES[bottleneck.type].short+'に待ち '+bottleneck.waiting+'両',detail:'人員を移すか、2・3並列にするか。次の工程の余裕も確認。',panel:'layout'};
  if(s.offers.length)return {title:'新しい商談 '+s.offers.length+'件',detail:'納期・工程負荷・手元資金を見て次の受注を選ぼう。',panel:'orders'};
- return {title:'次の変化まで進められます',detail:'給与・保管料も時間に応じて精算し、判断の場面で停止。',panel:'flow'};
+ return {title:'次の判断まで進められます',detail:'給与・保管料も時間に応じて精算し、判断の場面で停止。',panel:'flow'};
 }
-function signature(s){return JSON.stringify([s.failed,s.tutorial?.step,s.ledger.materials,s.metrics.delivered,s.orders.reduce((n,o)=>n+o.released,0),s.offers.map(o=>o.id),s.decision?.id,s.news[0]?.id,s.jobs.map(j=>[j.id,j.stage,j.status,Math.ceil(j.deadline-s.t)<=5]),s.buildings.map(b=>[b.id,b.broken,!!b.repairRemaining])]);}
+function signature(s){return JSON.stringify([s.failed,s.tutorial?.step,s.ledger.materials,s.metrics.delivered,s.orders.reduce((n,o)=>n+o.released,0),s.offers.map(o=>o.id),s.decision?.id,s.news[0]?.id,s.jobs.map(j=>[j.id,j.stage,['finished','blocked','material_funds','material_ready','buffer'].includes(j.status)?j.status:'moving',j.held,Math.ceil(j.deadline-s.t)<=5]),s.buildings.map(b=>[b.id,b.broken,!!b.repairRemaining])]);}
 function advanceToDecision(s,max=60){
  if(!Number.isFinite(max)||max<=0||max>120)return {ok:false,message:'進める時間が不正です。'};
  const start=s.t,before=signature(s);for(let n=0;n<Math.ceil(max/S.STEP);n++){S.step(s);if(s.t===start||s.failed||signature(s)!==before)break;}
