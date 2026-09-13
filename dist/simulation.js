@@ -1,7 +1,7 @@
 /* RAILWORKS YARD v0.3 — deterministic spatial simulation. No DOM dependency. */
 (function(root){'use strict';
 const Catalog=root.RailworksCatalog||(typeof require==='function'?require('./catalog.js'):null);
-const STEP=.1, WIDTH=38, HEIGHT=30, VERSION=3, MATERIAL_CAPACITY=12, MATERIAL_STORAGE=.18;
+const STEP=.1, WIDTH=38, HEIGHT=30, VERSION=4, MATERIAL_CAPACITY=12, MATERIAL_STORAGE=.18;
 const TYPES={
  design:{name:'設計スタジオ',short:'設計',stage:0,cost:4200,upkeep:.20,color:'#329bbc',sprite:0,desc:'図面をつくる最初の工程。設計の重い車種に。'},
  machining:{name:'加工工場',short:'加工',stage:1,cost:5200,upkeep:.30,color:'#cc8c34',sprite:1,desc:'車体や部品を加工。並列化で加工待ちを解消。'},
@@ -22,28 +22,34 @@ const SCENARIOS={
  sandbox:{name:'自由に育てる工場',sub:'サンドボックス',desc:'初期資金60,000G。制限時間なしで配置・雇用・投資を実験。',cash:60000,seed:731,chapter:0}
 };
 const CHAPTERS=[
- {title:'最初の出荷を、この工場から。',reward:3000,hint:'まずは操業開始。受注済みの3両が流れます。組立の進み方を観察しましょう。',lesson:'出荷が売上を生みます。全員が忙しいことより、最後まで流れることを優先しましょう。',goals:[['delivered',3,'累計出荷', '両']]},
+ {title:'最初の出荷を、この工場から。',reward:3000,hint:'最初は編成・受注・工場出荷を体験。初出荷のあとも2両出荷して、最初の章を達成しましょう。',lesson:'出荷が売上を生みます。全員が忙しいことより、最後まで流れることを優先しましょう。',goals:[['delivered',3,'累計出荷', '両']]},
  {title:'待ちを見つけて、流れを整える。',reward:4000,hint:'倉庫を建て、詰まる工程へ人を配置。受注画面で次の注文を引き受けましょう。',lesson:'倉庫は一時的な待ちを受け止めます。継続的に詰まるなら、制約工程の能力や投入量を見直します。',goals:[['warehouses',1,'中間倉庫','棟'],['delivered',8,'累計出荷','両'],['profit',5000,'累計営業利益','G']]},
  {title:'止まっても、立て直せる工場。',reward:5000,hint:'加工工場に故障発生。修理中は新規投入を絞り、余った人を他工程へ。',lesson:'修理だけでなく予防保全が必要です。常に満杯では、故障後に遅れを取り戻す余力がなくなります。',goals:[['repairs',1,'修理完了','回'],['delivered',13,'累計出荷','両'],['profit',10000,'累計営業利益','G']]},
  {title:'利益でつくる、次の生産ライン。',reward:8000,hint:'用地を拡張して生産工場を増設。増えた設備にも人員を配置しましょう。',lesson:'再投資は制約を動かします。増設後は別の工程が詰まっていないか、納期と在庫も一緒に見直します。',goals:[['productionBuildings',5,'生産工場','棟'],['expanded',1,'用地拡張','回'],['delivered',22,'累計出荷','両'],['profit',18000,'累計営業利益','G']]}
 ];
 const clone=v=>JSON.parse(JSON.stringify(v)), clamp=(n,l,h)=>Math.max(l,Math.min(h,n));
 function makeBuilding(id,type,x,y,staff=0){return {id,type,x,y,staff,level:1,condition:100,broken:false,repairRemaining:0,preventive:false,queue:[],active:null,progress:0,busyTime:0,blockedTime:0,completed:0};}
-function create(scenario='coast'){
+function create(scenario='coast',options={}){
  if(!SCENARIOS[scenario])scenario='coast';const cfg=SCENARIOS[scenario];
  const s={version:VERSION,scenario,t:0,seed:cfg.seed,initialCash:cfg.cash,cash:cfg.cash,employees:10,expanded:false,wipLimit:5,releaseEnabled:true,priority:'edd',routeDefaults:{},chapter:0,claimed:[],completedScenario:false,failed:false,
   buildings:[makeBuilding('b1','design',7,7,2),makeBuilding('b2','machining',12,7,2),makeBuilding('b3','assembly',12,13,2),makeBuilding('b4','inspection',7,13,2)],jobs:[],orders:[],offers:[],materials:[],nextMaterial:1,nextBuilding:5,nextJob:1,nextOrder:1,nextOffer:28,nextEvent:115,lastRelease:-10,routeVersion:0,
   metrics:{delivered:0,ontime:0,late:0,repairs:0,upgrades:0,builds:0,transportTiles:0,cycleTotal:0,stockUses:0,materialLeadSaved:0},ledger:{revenue:0,materials:0,cogs:0,operating:0,wages:0,upkeep:0,storage:0,storageIntermediate:0,storageFloor:0,storageFinished:0,storageMaterials:0,penalties:0,service:0,capex:0,rewards:0},events:[],news:[],history:[],lastHistory:0,shipping:[],effects:[],_cache:{}};
  for(let i=0;i<3;i++)s.offers.push(makeOffer(s,scenario==='studio'?'odakyu':i===1?'odakyu':'kintetsu',1,(scenario==='justintime'?280:scenario==='stockyard'?180:140)+i*40));
+ s.tutorial={step:'done',configured:false,orderId:null};s.transactions=[];s.decision=null;s.nextDecision=48;s.metrics.streak=0;s.metrics.bestStreak=0;s.ledger.freight=0;
  const first=[...s.offers];first.forEach(o=>accept(s,o.id));
  for(let i=0;i<3;i++)s.offers.push(makeOffer(s,scenario==='surge'?'e235':i===0?'kintetsu':i===1?'n700':'e235',i===0?2:1,scenario==='surge'?170:270+i*50));
  if(scenario==='rescue'){s.buildings[1].broken=true;s.buildings[1].condition=0;s.buildings[3].condition=20;news(s,'加工工場が故障中','設備をタップして修理を依頼してください。','alert','b2');}
- news(s,'営業窓口に3件の受注が到着',cfg.hint||'操業開始で受注伝票が設計へ。設計完了後に材料を手配します。未配置の従業員は2人です。','info');return s;
+ if(options.tutorial&&scenario==='coast'){
+  s.orders=[];s.offers=[{...first[0],status:'offer',released:0,shipped:0,late:0,training:true,autoShip:false,expires:10000,deadline:160}];s.news=[];s.releaseEnabled=false;
+  s.tutorial={step:'layout',configured:false,orderId:null};
+ }
+ news(s,s.tutorial.step==='layout'?'工場長、最初のラインを決めましょう':'営業窓口に3件の受注が到着',cfg.hint||'営業から伝票を設計へ。設計完了後に材料を手配し、工場出荷で入金されます。','info');return s;
 }
 function rand(s){s.seed=(Math.imul(s.seed,1664525)+1013904223)>>>0;return s.seed/4294967296;}
 function news(s,title,body,kind='info',buildingId=null){s.news.unshift({id:Math.round(s.t*100)+'-'+s.news.length,title,body,kind,buildingId,t:s.t});s.news=s.news.slice(0,30);}
-function income(s,n,category){s.cash+=n;s.ledger[category]+=n;}
-function expense(s,n,category){s.cash-=n;s.ledger[category]+=n;if(s.cash<=0)s.failed=true;if(!['materials','capex'].includes(category))s.ledger.operating+=n;}
+function transaction(s,amount,category){if(!amount)return;s.transactions??=[];s.transactions.unshift({t:s.t,amount,category,cash:s.cash});s.transactions=s.transactions.slice(0,24);}
+function income(s,n,category){s.cash+=n;s.ledger[category]=(s.ledger[category]||0)+n;transaction(s,n,category);}
+function expense(s,n,category){s.cash-=n;s.ledger[category]=(s.ledger[category]||0)+n;if(n&&!['wages','upkeep','storage'].includes(category))transaction(s,-n,category);if(s.cash<=0)s.failed=true;if(!['materials','capex'].includes(category))s.ledger.operating+=n;}
 function profit(s){return s.ledger.revenue-s.ledger.cogs-s.ledger.operating;}
 function freeStaff(s){return s.employees-s.buildings.reduce((n,b)=>n+b.staff,0);}
 function stageBuildings(s,stage){return s.buildings.filter(b=>TYPES[b.type].stage===stage);}
@@ -61,7 +67,7 @@ function incoming(s,id){return s.jobs.filter(j=>j.status==='transfer'&&j.target=
 function room(s,b){return TYPES[b.type].stage===null?(b.type==='warehouse'?6*b.level-b.queue.length-incoming(s,b.id):0):2-b.queue.length-incoming(s,b.id);}
 function wip(s){return s.jobs.filter(j=>j.stage<4).length;}
 function conditionSpeed(b){return b.condition<30?.8:1;}
-function speed(s,b){if(b.broken||b.repairRemaining>0||!b.staff)return 0;const boost=s.events.some(e=>e.kind==='morale'&&e.until>s.t)?1.2:1;return (b.staff===1?.55:1+(b.staff-2)*.33)*(1+(b.level-1)*.3)*conditionSpeed(b)*boost;}
+function speed(s,b){if(b.broken||b.repairRemaining>0||!b.staff)return 0;const boost=s.events.some(e=>e.kind==='morale'&&e.until>s.t)?1.2:1,support=s.events.some(e=>e.kind==='focus'&&e.stage===TYPES[b.type].stage&&e.until>s.t)?1.35:1;return (b.staff===1?.55:1+(b.staff-2)*.33)*(1+(b.level-1)*.3)*conditionSpeed(b)*boost*support;}
 function predictedWait(s,b){const job=s.jobs.find(j=>j.id===b.active),work=job?.status==='work'?Math.max(0,PRODUCTS[job.product].work[job.stage]-b.progress):job?20:0;return work/(speed(s,b)||.2)+(b.queue.length+incoming(s,b.id))*25;}
 function candidate(s,stage,from,orderId){const o=s.orders.find(o=>o.id===orderId),preferred=o?.routes?.[stage]||s.routeDefaults?.[stage];return stageBuildings(s,stage).filter(b=>(!preferred||b.id===preferred)&&!b.broken&&b.repairRemaining<=0&&b.staff>0&&room(s,b)>0).map(b=>({b,path:route(s,from,port(b))})).filter(x=>x.path).sort((a,b)=>predictedWait(s,a.b)+a.path.length-predictedWait(s,b.b)-b.path.length)[0];}
 function travel(s,j,target,path){j.status='transfer';j.target=target;j.path=path;j.travel=0;const rate=s.events.some(e=>e.kind==='transport'&&e.until>s.t)?3.5:2.5;j.travelTime=Math.max(.5,(path.length-1)/rate);j.location=null;s.metrics.transportTiles+=Math.max(0,path.length-1);}
@@ -69,8 +75,8 @@ function makeOffer(s,product=null,quantity=null,dueIn=null){
  const p=product||(['kintetsu','e235','odakyu','n700','panorama','freight','modular','precision'][Math.floor(rand(s)*8)]);
  const q=quantity||1+Math.floor(rand(s)*2);return {id:'o'+s.nextOrder++,product:p,quantity:q,deadline:s.t+(dueIn||(s.scenario==='surge'?160:240)+q*60),expires:s.t+110,status:'offer',created:s.t,unitSale:PRODUCTS[p].sale};
 }
-function accept(s,id){const o=s.offers.find(o=>o.id===id);if(!o||o.expires<s.t||s.failed)return {ok:false,message:'この商談の受付は終了しています。'};if(s.orders.filter(o=>o.status==='active').length>=10)return {ok:false,message:'進行中の受注は10件までです。'};s.offers=s.offers.filter(o=>o.id!==id);o.status='active';o.released=0;o.shipped=0;o.late=0;s.orders.push(o);news(s,PRODUCTS[o.product].name+'を'+o.quantity+'両受注','仕掛上限に空きができると自動で着工します。','good');return {ok:true,message:'受注しました。営業から伝票を送り、設計完了後に材料を手配します。'};}
-function reject(s,id){s.offers=s.offers.filter(o=>o.id!==id);return {ok:true,message:'受注を見送りました。'};}
+function accept(s,id){if(s.tutorial?.step==='layout')return {ok:false,message:'先に最初のライン編成を決めてください。'};const o=s.offers.find(o=>o.id===id);if(!o||o.expires<s.t||s.failed)return {ok:false,message:'この商談の受付は終了しています。'};if(s.orders.filter(o=>o.status==='active').length>=10)return {ok:false,message:'進行中の受注は10件までです。'};s.offers=s.offers.filter(o=>o.id!==id);o.status='active';o.released=0;o.shipped=0;o.late=0;s.orders.push(o);if(s.tutorial?.step==='order'){s.tutorial.orderId=o.id;s.tutorial.step='launch';}news(s,PRODUCTS[o.product].name+'を'+o.quantity+'両受注','仕掛上限に空きができると自動で着工します。','good');return {ok:true,message:'受注しました。営業から伝票を送り、設計完了後に材料を手配します。'};}
+function reject(s,id){if(s.offers.some(o=>o.id===id&&o.training)&&s.tutorial?.step!=='done')return {ok:false,message:'この1両は操作を覚えるための商談です。受注してみましょう。'};s.offers=s.offers.filter(o=>o.id!==id);return {ok:true,message:'受注を見送りました。'};}
 function release(s){
  if(!s.releaseEnabled||wip(s)>=s.wipLimit||s.t-s.lastRelease<4-.000001||s.failed)return;
  const orders=s.orders.filter(o=>o.status==='active'&&o.released<o.quantity&&(o.releaseAt??0)<=s.t+.000001).sort((a,b)=>s.priority==='fifo'?a.created-b.created:a.deadline-b.deadline);
@@ -118,19 +124,23 @@ function routeReady(s,j,b){
  if(warehouses.length){travel(s,j,warehouses[0].b.id,warehouses[0].path);return true;}}
  return false;
 }
-function deliver(s,j){
- const o=s.orders.find(o=>o.id===j.order),late=(j.finishedAt??s.t)>j.deadline+STEP+.000001,p=PRODUCTS[j.product];
+function deliver(s,j,early=false){
+ const o=s.orders.find(o=>o.id===j.order),late=s.t>j.deadline+STEP+.000001,p=PRODUCTS[j.product];
  income(s,o.unitSale,'revenue');s.ledger.cogs+=j.materialCost;if(late){expense(s,o.unitSale*Math.min(.25,.05+(s.t-j.deadline)*.001),'penalties');s.metrics.late++;o.late++;}else s.metrics.ontime++;
+ if(early&&!o.training&&s.t<j.deadline)expense(s,Math.round(o.unitSale*.02),'freight');
+ s.metrics.streak=late?0:(s.metrics.streak||0)+1;s.metrics.bestStreak=Math.max(s.metrics.bestStreak||0,s.metrics.streak);
+ if(s.metrics.streak&&s.metrics.streak%3===0){const bonus=300*Math.min(3,s.metrics.streak/3);income(s,bonus,'rewards');news(s,'納期内 '+s.metrics.streak+'連続！ 信頼ボーナス +'+bonus+'G','出荷をつなぐ判断が評価されました。助成収入として計上します。','good');}
  s.metrics.delivered++;s.metrics.cycleTotal+=s.t-j.started;o.shipped++;if(o.shipped===o.quantity)o.status='complete';
  s.shipping.push({t:s.t,ontime:!late});s.shipping=s.shipping.filter(x=>s.t-x.t<120);s.effects.push({kind:'delivery',t:s.t,product:j.product,amount:o.unitSale});
- news(s,`${p.name}を出荷 +${o.unitSale.toLocaleString()}G`,late?'納期超過のため遅延控除が発生しました。':'納期内に出荷。利益を次の投資へ。',late?'alert':'good');s.jobs=s.jobs.filter(x=>x.id!==j.id);
+ news(s,`${p.name}を工場出荷 +${o.unitSale.toLocaleString()}G`,late?'納期超過のため遅延控除が発生しました。':'出荷口を通過して入金。完成だけでは売上は入りません。',late?'alert':'good');s.jobs=s.jobs.filter(x=>x.id!==j.id);
+ if(o.id===s.tutorial?.orderId&&s.tutorial.step==='shipping')s.tutorial.step='debrief';
 }
 function step(s,dt=STEP){
- if(s.failed)return;if(!Number.isFinite(dt)||dt<=0||dt>1)throw Error('step accepts 0 < dt <= 1');s.t+=dt;
+ if(s.failed||['layout','order','launch','funding','shipping','debrief'].includes(s.tutorial?.step))return;if(!Number.isFinite(dt)||dt<=0||dt>1)throw Error('step accepts 0 < dt <= 1');s.t+=dt;
  s.events=s.events.filter(e=>e.until>s.t);s.effects=s.effects.filter(e=>s.t-e.t<4);
  updateMaterials(s,dt);
- for(const j of [...s.jobs])if(j.status==='finished'){const duration=Math.max(0,Math.min(s.t,j.deadline)-Math.max(s.t-dt,j.finishedAt));const fee=duration*.9;expense(s,fee,'storage');s.ledger.storageFinished+=fee;if(s.t+.000001>=j.deadline)deliver(s,j);}
- for(const j of [...s.jobs])if(j.status==='transfer'){j.travel+=dt;if(j.travel>=j.travelTime){if(j.target==='dispatch'){j.status='finished';j.location='dispatch';j.target=null;j.finishedAt=s.t;if(s.t<j.deadline)news(s,PRODUCTS[j.product].name+'が完成', '納期まであと'+Math.ceil(j.deadline-s.t)+'秒。完成品倉庫で0.90G / 秒の保管料が発生します。','info');if(s.t+.000001>=j.deadline)deliver(s,j);continue;}const b=s.buildings.find(b=>b.id===j.target);j.status=b.type==='warehouse'?'buffer':'queue';j.location=b.id;j.target=null;b.queue.push(j.id);}}
+ for(const j of [...s.jobs])if(j.status==='finished'){const o=s.orders.find(o=>o.id===j.order),end=o?.autoShip===false?s.t:Math.min(s.t,j.deadline),duration=Math.max(0,end-Math.max(s.t-dt,j.finishedAt));const fee=duration*.9;expense(s,fee,'storage');s.ledger.storageFinished+=fee;if(s.t+.000001>=j.deadline&&o?.autoShip!==false)deliver(s,j);}
+ for(const j of [...s.jobs])if(j.status==='transfer'){j.travel+=dt;if(j.travel>=j.travelTime){if(j.target==='dispatch'){j.status='finished';j.location='dispatch';j.target=null;j.finishedAt=s.t;if(s.t<j.deadline)news(s,PRODUCTS[j.product].name+'が完成', '納期まであと'+Math.ceil(j.deadline-s.t)+'秒。完成品倉庫で0.90G / 秒の保管料。まだ入金はありません。出荷タブで前倒し出荷も選べます。','info');if(s.t+.000001>=j.deadline&&s.orders.find(o=>o.id===j.order)?.autoShip!==false)deliver(s,j);continue;}const b=s.buildings.find(b=>b.id===j.target);j.status=b.type==='warehouse'?'buffer':'queue';j.location=b.id;j.target=null;b.queue.push(j.id);}}
  const protective=s.buildings.filter(b=>b.type==='maintenance'&&b.staff>0).length>0;
  for(const b of s.buildings){
   if(b.repairRemaining>0){b.repairRemaining=Math.max(0,b.repairRemaining-dt);if(!b.repairRemaining){b.condition=100;b.broken=false;if(!b.preventive)s.metrics.repairs++;b.preventive=false;news(s,TYPES[b.type].short+'が復帰しました','生産を再開できます。','good',b.id);}continue;}
@@ -143,10 +153,14 @@ function step(s,dt=STEP){
  }
  const wages=s.employees*.48*dt,upkeep=s.buildings.reduce((a,b)=>a+TYPES[b.type].upkeep*b.level,0)*dt,stock=s.jobs.filter(j=>j.status==='buffer').length*.25*dt,floor=s.jobs.filter(j=>['queue','blocked'].includes(j.status)).length*.6*dt;
  expense(s,wages,'wages');expense(s,upkeep,'upkeep');expense(s,stock+floor,'storage');s.ledger.storageIntermediate+=stock;s.ledger.storageFloor+=floor;release(s);
- if(s.t>=s.nextOffer){if(s.offers.length<6)s.offers.push(makeOffer(s));s.nextOffer=s.t+(s.scenario==='surge'?18:34);}
+ if(s.t>=s.nextOffer&&s.tutorial?.step==='done'){if(s.offers.length<6)s.offers.push(makeOffer(s));s.nextOffer=s.t+(s.scenario==='surge'?18:24);}
  s.offers=s.offers.filter(o=>o.expires>=s.t);
- if(s.t>=s.nextEvent){triggerEvent(s);s.nextEvent=s.t+100+rand(s)*70;}
+ if(s.t>=s.nextEvent&&s.tutorial?.step==='done'){triggerEvent(s);s.nextEvent=s.t+80+rand(s)*50;}
+ if(s.decision&&s.decision.expires<=s.t)s.decision=null;
+ if(s.t>=s.nextDecision&&s.tutorial?.step==='done'){s.decision={id:'d'+Math.round(s.t*10),expires:s.t+32};s.nextDecision=s.t+62;news(s,'応援便が到着：どこを速める？','工程を35%加速するか、材料の入荷を12秒早めるか選べます。','good');}
  if(s.t-s.lastHistory>=5){s.lastHistory=s.t;s.history.push({t:s.t,cash:s.cash,profit:profit(s),wip:wip(s),shipped:s.shipping.filter(e=>s.t-e.t<=60).length});if(s.history.length>240)s.history.shift();}
+ if(s.tutorial?.step==='watch'&&s.jobs.some(j=>j.order===s.tutorial.orderId&&j.materialPaid))s.tutorial.step='funding';
+ if(s.tutorial?.step==='manufacture'&&s.jobs.some(j=>j.order===s.tutorial.orderId&&j.status==='finished'))s.tutorial.step='shipping';
  if(s.cash<=0){s.failed=true;news(s,'運転資金が尽きました','一時停止して振り返り、新しい工場で再挑戦できます。','alert');}
 }
 function triggerEvent(s,forced){
@@ -172,7 +186,7 @@ function repair(s,id,preventive=false){const b=s.buildings.find(b=>b.id===id);if
 function upgrade(s,id){const b=s.buildings.find(b=>b.id===id);if(!b||b.level>=3)return {ok:false,message:'設備はレベル3までです。'};const cost=upgradeCost(b);if(s.cash<cost)return {ok:false,message:'改良資金が足りません。'};expense(s,cost,'capex');b.level++;s.metrics.upgrades++;return {ok:true,message:b.type==='warehouse'?'保管容量を6両増やしました。':'設備を改良しました。'};}
 function upgradeCost(b){return Math.round(TYPES[b.type].cost*.55*b.level);}
 function expand(s){if(s.expanded)return {ok:false,message:'用地はすべて開放済みです。'};if(s.cash<6000)return {ok:false,message:'用地取得費6,000Gが足りません。'};expense(s,6000,'capex');s.expanded=true;return {ok:true,message:'東・北の区画を開放しました。マップを移動して建設できます。'};}
-function demolish(s,id){const b=s.buildings.find(b=>b.id===id);if(!b)return {ok:false,message:'設備が見つかりません。'};if(b.active||b.queue.length||incoming(s,id)||b.repairRemaining)return {ok:false,message:'作業・待ち・運搬・保全が完了してから撤去できます。'};const stage=TYPES[b.type].stage;if(stage!==null&&stageBuildings(s,stage).length===1)return {ok:false,message:'各工程に最低1棟必要です。先に代わりを建ててください。'};const spent=TYPES[b.type].cost+(b.level>=2?Math.round(TYPES[b.type].cost*.55):0)+(b.level>=3?Math.round(TYPES[b.type].cost*1.1):0),refund=Math.round(spent*.35);s.cash+=refund;s.ledger.capex-=refund;s.buildings=s.buildings.filter(x=>x.id!==id);s.routeVersion++;s._cache={};for(const routes of [s.routeDefaults,...s.orders.map(o=>o.routes)])if(routes)for(const stage of Object.keys(routes))if(routes[stage]===id)delete routes[stage];return {ok:true,message:refund.toLocaleString()+'Gを回収しました。配置人員は未配置に戻ります。'};}
+function demolish(s,id){const b=s.buildings.find(b=>b.id===id);if(!b)return {ok:false,message:'設備が見つかりません。'};if(b.active||b.queue.length||incoming(s,id)||b.repairRemaining)return {ok:false,message:'作業・待ち・運搬・保全が完了してから撤去できます。'};const stage=TYPES[b.type].stage;if(stage!==null&&stageBuildings(s,stage).length===1)return {ok:false,message:'各工程に最低1棟必要です。先に代わりを建ててください。'};const spent=TYPES[b.type].cost+(b.level>=2?Math.round(TYPES[b.type].cost*.55):0)+(b.level>=3?Math.round(TYPES[b.type].cost*1.1):0),refund=Math.round(spent*.35);s.cash+=refund;s.ledger.capex-=refund;transaction(s,refund,'recovery');s.buildings=s.buildings.filter(x=>x.id!==id);s.routeVersion++;s._cache={};for(const routes of [s.routeDefaults,...s.orders.map(o=>o.routes)])if(routes)for(const stage of Object.keys(routes))if(routes[stage]===id)delete routes[stage];return {ok:true,message:refund.toLocaleString()+'Gを回収しました。配置人員は未配置に戻ります。'};}
 function measure(s,key){switch(key){case'profit':return Math.floor(profit(s));case'designBuildings':return s.buildings.filter(b=>b.type==='design').length;case'warehouses':return s.buildings.filter(b=>b.type==='warehouse').length;case'productionBuildings':return s.buildings.filter(b=>TYPES[b.type].stage!==null).length;case'expanded':return +s.expanded;default:return s.metrics[key]||0;}}
 function mission(s){
  let m;if(s.scenario==='coast')m=CHAPTERS[Math.min(s.chapter,3)];
@@ -186,12 +200,15 @@ function claim(s){const m=mission(s);if(!m.ready)return {ok:false,message:'ま�
 function summary(s){return {profit:profit(s),wip:wip(s),freeStaff:freeStaff(s),ontime:s.metrics.delivered?s.metrics.ontime/s.metrics.delivered:1,rate:s.shipping.filter(e=>s.t-e.t<=60).length,averageCycle:s.metrics.delivered?s.metrics.cycleTotal/s.metrics.delivered:0,finishedStock:s.jobs.filter(j=>j.status==='finished').length,floorStock:s.jobs.filter(j=>['queue','blocked'].includes(j.status)).length,warehouseStock:s.jobs.filter(j=>j.status==='buffer').length,warehouseCapacity:s.buildings.filter(b=>b.type==='warehouse').reduce((n,b)=>n+6*b.level,0)};}
 function status(s,b){if(b.repairRemaining)return {label:b.preventive?'予防保全中':'修理中',kind:'repair'};if(b.broken)return {label:'故障停止',kind:'broken'};if(b.type==='warehouse')return {label:`保管 ${b.queue.length} / ${6*b.level}`,kind:b.queue.length>=6*b.level?'blocked':'storage'};if(b.type==='maintenance')return {label:b.staff?'予防支援中':'人員未配置',kind:b.staff?'working':'idle'};if(!b.staff)return {label:'人員未配置',kind:'idle'};const j=s.jobs.find(j=>j.id===b.active);if(j?.status==='blocked')return {label:'後工程待ち',kind:'blocked'};if(b.active)return {label:'作業中',kind:'working'};return {label:b.queue.length?'順番待ち':'受入待ち',kind:'idle'};}
 function serialize(s){const c=clone({...s,_cache:undefined});return JSON.stringify(c);}
-function restore(raw){let s;try{s=JSON.parse(raw);}catch(_){throw Error('保存データを読み込めません。');}if(!s||![1,2,VERSION].includes(s.version)||!SCENARIOS[s.scenario]||!Array.isArray(s.buildings)||!Array.isArray(s.jobs)||!Array.isArray(s.orders)||!Array.isArray(s.offers)||!s.ledger||!s.metrics||!Array.isArray(s.news))throw Error('対応していない保存データです。');
+function restore(raw){let s;try{s=JSON.parse(raw);}catch(_){throw Error('保存データを読み込めません。');}if(!s||![1,2,3,VERSION].includes(s.version)||!SCENARIOS[s.scenario]||!Array.isArray(s.buildings)||!Array.isArray(s.jobs)||!Array.isArray(s.orders)||!Array.isArray(s.offers)||!s.ledger||!s.metrics||!Array.isArray(s.news))throw Error('対応していない保存データです。');
  if(!Number.isFinite(s.cash)||!Number.isFinite(s.t)||s.buildings.length>36||s.jobs.length>100||s.orders.length>10000)throw Error('保存データの値が不正です。');
  const ids=new Set(s.buildings.map(b=>b.id));if(ids.size!==s.buildings.length||s.buildings.some(b=>!TYPES[b.type]||!Number.isInteger(b.x)||!Number.isInteger(b.y)||!Array.isArray(b.queue)||!Number.isInteger(b.staff)||b.staff<0||b.staff>4))throw Error('設備データが不正です。');
  if(s.jobs.some(j=>!PRODUCTS[j.product]||!Number.isInteger(j.stage)||j.stage<0||j.stage>4||!['work','queue','buffer','blocked','transfer','finished','procurement','material_ready','material_funds'].includes(j.status)))throw Error('車両データが不正です。');s.routeDefaults??={};s.ledger.storageIntermediate??=s.ledger.storage;s.ledger.storageFloor??=0;s.ledger.storageFinished??=0;s.ledger.storageMaterials??=0;
  if(s.version<3){s.materials=[];s.nextMaterial=1;for(const j of s.jobs){j.materialPaid=true;j.cargo=j.stage===0?'paper':j.stage>=4?'train':'wip';}s.metrics.stockUses=0;s.metrics.materialLeadSaved=0;}
  if(!Array.isArray(s.materials)||s.materials.length>112||!Number.isInteger(s.nextMaterial)||s.nextMaterial<1||s.materials.some(l=>!PRODUCTS[l.product]||!Number.isFinite(l.cost)||l.cost<0||!Number.isFinite(l.readyAt)||l.readyAt<0))throw Error('資材データが不正です。');
+ s.tutorial??={step:'done',configured:false,orderId:null};s.transactions??=[];s.decision??=null;s.nextDecision??=s.t+48;s.metrics.streak??=0;s.metrics.bestStreak??=0;s.ledger.freight??=0;
+ if(!['layout','order','launch','watch','funding','manufacture','shipping','debrief','done'].includes(s.tutorial.step))throw Error('チュートリアルの保存状態が不正です。');
+ if(!Array.isArray(s.transactions)||s.transactions.length>24||s.transactions.some(t=>!t||!Number.isFinite(t.t)||!Number.isFinite(t.amount)||!Number.isFinite(t.cash)||typeof t.category!=='string'))throw Error('入出金履歴が不正です。');
  s.version=VERSION;s._cache={};return s;}
 
 // Explicit choices apply at the next dispatch; committed transfers and work are preserved.
@@ -214,5 +231,5 @@ function park(s,id){
 function resumeJob(s,id){const j=s.jobs.find(j=>j.id===id);if(!j?.held)return {ok:false,message:'出庫を止めている車両はありません。'};j.held=false;return {ok:true,message:'空いた後工程へ出庫を再開します。'};}
 
 function setRelease(s,id,delay){const o=s.orders.find(o=>o.id===id&&o.status==='active');if(!o||!Number.isFinite(delay)||delay<0||delay>1800)return {ok:false,message:'着工待ち時間は0〜1800秒で指定してください。'};if(o.released>=o.quantity)return {ok:false,message:'この受注は全両着工済みです。予約は未着工分に適用されます。'};o.releaseAt=s.t+delay;return {ok:true,message:'未着工の'+(o.quantity-o.released)+'両を'+(delay?'今から'+delay+'秒後以降に着工します。':'次の空き枠から着工します。')};}
-const api={materialCommitment,materialLead,materialSummary,buyMaterials,MATERIAL_CAPACITY,MATERIAL_STORAGE,sales,setRelease,setRoute,park,resumeJob,STEP,WIDTH,HEIGHT,VERSION,TYPES,PRODUCTS,PRODUCT_IDS,SCENARIOS,CHAPTERS,supply,dispatch,create,step,route,port,makeOffer,accept,reject,build,buildCheck,assign,hire,dismiss,repair,upgrade,upgradeCost,expand,demolish,claim,mission,summary,status,profit,wip,freeStaff,incoming,speed,serialize,restore,triggerEvent,news};root.YardSim=api;if(typeof module==='object'&&module.exports)module.exports=api;
+const api={dispatchJob:deliver,payService:(s,n)=>expense(s,n,'service'),materialCommitment,materialLead,materialSummary,buyMaterials,MATERIAL_CAPACITY,MATERIAL_STORAGE,sales,setRelease,setRoute,park,resumeJob,STEP,WIDTH,HEIGHT,VERSION,TYPES,PRODUCTS,PRODUCT_IDS,SCENARIOS,CHAPTERS,supply,dispatch,create,step,route,port,makeOffer,accept,reject,build,buildCheck,assign,hire,dismiss,repair,upgrade,upgradeCost,expand,demolish,claim,mission,summary,status,profit,wip,freeStaff,incoming,speed,serialize,restore,triggerEvent,news};root.YardSim=api;if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

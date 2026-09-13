@@ -1,11 +1,11 @@
 {
   "name": "factory-simulator2",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "RAILWORKS YARD — a spatial factory management simulation",
+  "description": "RAILWORKS YARD \u2014 a spatial factory management simulation",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "check": "node --check dist/simulation.js && node --check dist/planner.js && node --check dist/world.js && node --check dist/app.js && node scripts/check-static.js"
+    "check": "node --check dist/simulation.js && node --check dist/operations.js && node --check dist/management.js && node --check dist/hud-layout.js && node --check dist/planner.js && node --check dist/world.js && node --check dist/app.js && node scripts/check-static.js"
   },
   "engines": {
     "node": ">=20"

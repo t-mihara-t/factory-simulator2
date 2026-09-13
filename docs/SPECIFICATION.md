@@ -1,3 +1,7 @@
+# v0.4の追加仕様
+
+初回チュートリアル、並列編成、出荷と資金、管理タブ、待ち時間の短縮については [CHANGES_V04.md](CHANGES_V04.md) を参照してください。以下はv0.3までの基礎仕様です。相違がある箇所はv0.4の追加仕様を優先します。
+
 # Factory Simulator 2 — prototype 0.3
 
 Current Japanese change specification: [CHANGES_V03.md](CHANGES_V03.md).
