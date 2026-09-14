@@ -5,8 +5,8 @@ const STAGES=['design','machining','assembly','inspection'],STARTER_GRANT=38000;
 const TUTORIAL={
  layout:{n:1,title:'工場の編成を決めよう',body:'各工程を1〜3並列で設計。増やすほど同時に作れますが、設備維持費と給与も増えます。',panel:'layout',cta:'最初のラインを編成'},
  order:{n:2,title:'最初の1両を受注しよう',body:'受注は約束。入金は納期の工場出荷時です。早く完成しても前倒し出荷はできません。まず観光旅客車を1両引き受けましょう。',panel:'orders',cta:'商談を開く'},
- launch:{n:3,title:'受注伝票を設計へ送ろう',body:'材料はまだ買いません。設計のあとに発注し、到着した材料を加工へ運びます。',panel:'flow',cta:'生産計画を確認'},
- watch:{n:3,title:'伝票が到着。設計が始まる！',body:'運搬中は8×、作業中は4×で進行。「次の判断まで」も使えます。材料購入や出荷の説明では自動停止。',panel:'flow',cta:'計画を見る'},
+ launch:{n:3,title:'ガントを見て、着工予約を決めよう',body:'予約時刻を変えるとガントと保管費が更新されます。完成を納期に近づけつつ、遅れへの余裕も残しましょう。確定するまで着工も材料購入もありません。',panel:'flow',cta:'生産計画を確認'},
+ watch:{n:3,title:'予約時刻に合わせて、伝票を設計へ',body:'予約待ちは8×、作業中は4×で進みます。「次の判断まで」で予約時刻へ進むこともできます。設計後の材料購入では自動停止。',panel:'flow',cta:'計画を見る'},
  funding:{n:4,title:'材料を発注して、お金が減った',body:'この1両の材料費は2,850G。手配した時点で現金を支払います。ここまで売上は0G。給与・維持費もゲーム時間に応じて掛かります。',panel:'finance',cta:'お金の流れを見る'},
  manufacture:{n:4,title:'完成へ。次に詰まる工程は？',body:'工程カードから人員や並列数を確認できます。「次の判断まで」で材料到着や作業完了を追いましょう。',panel:'flow',cta:'工程を調整'},
  shipping:{n:5,title:'前倒し出荷は禁止。納期まで入金は0G',body:'完成した車両は出荷倉庫で保留。納期までは出荷できず、1両につき0.90G / ゲーム秒の保管料が掛かります。早すぎる完成を防ぐ戦略を覚えましょう。',panel:'shipping',cta:'保管費と対策を見る'},
@@ -29,9 +29,11 @@ function configureLayout(s,counts){
  S.news(s,'あなたのラインが完成',counts.join(' → ')+'並列。'+q.employees+'人で操業します。','good');
  return {ok:true,message:'編成を決定しました。次は受注を体験しましょう。'};
 }
+function acceptForPlanning(s,id){return S.accept(s,id,{reviewRelease:true});}
+function confirmRelease(s,id){const r=S.confirmRelease(s,id);if(!r.ok)return r;s.releaseEnabled=true;if(s.tutorial?.step==='launch'&&s.tutorial.orderId===id)s.tutorial.step='watch';return r;}
 function tutorialContinue(s){
  const t=s.tutorial;if(!t)return {ok:false,message:'案内は完了しています。'};
- if(t.step==='launch'){t.step='watch';s.releaseEnabled=true;return {ok:true,message:'受注伝票を送ります。設計後の材料購入に注目！'};}
+ if(t.step==='launch')return confirmRelease(s,t.orderId);
  if(t.step==='funding'){t.step='manufacture';return {ok:true,message:'材料を待ちながら、製造と運搬を進めます。'};}
  if(t.step==='shipping'){
   const j=s.jobs.find(j=>j.order===t.orderId&&j.status==='finished');if(!j)return {ok:false,message:'出荷倉庫の練習車両を確認してください。'};
@@ -90,6 +92,7 @@ function chooseSupport(s,choice,stage){
 }
 function attention(s){
  const guide=TUTORIAL[s.tutorial?.step];if(guide)return {title:guide.title,detail:guide.body,panel:guide.panel};
+ const pending=s.orders.filter(o=>o.status==='active'&&o.releasePending);if(pending.length)return {title:'着工予約が未確定 '+pending.length+'件',detail:'ガントで納期・完成予定・保管費を見て確定しましょう。未確定の案件は着工しません。',panel:'flow'};
  if(s.decision)return {title:'応援便：あと'+Math.ceil(s.decision.expires-s.t)+'秒で受付終了',detail:'工程の加速か、材料の速達か。今の詰まりに合わせて選択。',panel:'events'};
  const b=s.buildings.find(b=>b.broken&&!b.repairRemaining);if(b)return {title:S.TYPES[b.type].short+'が故障停止',detail:'修理と人員配置を見直せます。',panel:'staff'};
  const finished=s.jobs.filter(j=>j.status==='finished');if(finished.length)return {title:finished.length+'両が完成・未入金',detail:'前倒し出荷は禁止。納期まで保管料が掛かります。次の着工予約と手元資金を確認。',panel:'shipping'};
@@ -104,6 +107,6 @@ function advanceToDecision(s,max=60){
  const start=s.t,before=signature(s);for(let n=0;n<Math.ceil(max/S.STEP);n++){S.step(s);if(s.t===start||s.failed||signature(s)!==before)break;}
  return {ok:s.t>start,seconds:s.t-start,message:s.t>start?((s.t-start).toFixed(1)+'秒進行。'+attention(s).title):'チュートリアルの案内に沿って操作してください。'};
 }
-const api={STAGES,STARTER_GRANT,TUTORIAL,layoutQuote,configureLayout,tutorialContinue,finance,shipNow,addParallel,loads,chooseSupport,attention,advanceToDecision};
+const api={STAGES,STARTER_GRANT,TUTORIAL,acceptForPlanning,confirmRelease,layoutQuote,configureLayout,tutorialContinue,finance,shipNow,addParallel,loads,chooseSupport,attention,advanceToDecision};
 root.YardOperations=api;if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

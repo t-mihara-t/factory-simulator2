@@ -1,6 +1,6 @@
 {
   "name": "factory-simulator2",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "private": true,
   "description": "RAILWORKS YARD \u2014 a spatial factory management simulation",
   "scripts": {

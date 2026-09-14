@@ -45,12 +45,12 @@ test('opening offers an automatic demo that completes and returns to the untouch
  assert(!a.ids.get('opening').hidden);assert(!a.ids.get('modal').open);a.run(2);assert.equal(a.saved(),raw);assert.equal(a.state().t,old.t);
  a.click('[data-opening="demo"]','opening');assert(a.ids.get('opening').hidden);assert(a.ids.get('modal').open);assert.equal(a.ids.get('modal').dataset.panel,'layout');
  a.run(14);const paused=S.serialize(a.state());a.click('[data-demo="pause"]','demo-bar');a.run(3);assert.equal(S.serialize(a.state()),paused);a.click('[data-demo="pause"]','demo-bar');
- a.run(21);assert.equal(a.state().metrics.delivered,1);assert.equal(a.ids.get('modal').dataset.panel,'demoFinish');assert.equal(a.saved(),raw);assert.equal(a.writes.filter(([k])=>k===SAVE).length,0);
+ a.run(26);assert.equal(a.state().metrics.delivered,1);assert.equal(a.ids.get('modal').dataset.panel,'demoFinish');assert.equal(a.saved(),raw);assert.equal(a.writes.filter(([k])=>k===SAVE).length,0);
  a.click('[data-opening="back"]','modal-body');assert(!a.ids.get('opening').hidden);a.click('[data-opening="continue"]','opening');assert.equal(S.serialize(a.state()),raw);a.run(1);assert(a.state().t>old.t);
 });
 test('interactive opening starts the real tutorial; management tabs switch without advancing game time',()=>{
  const a=app();a.click('[data-opening="tutorial"]','opening');assert.equal(a.ids.get('modal').dataset.panel,'layout');assert(!a.ids.get('game').inert);
- a.click('[data-action="configure"]','modal-body');assert.equal(a.ids.get('modal').dataset.panel,'orders');a.click('[data-action="accept"]','modal-body');assert.equal(a.ids.get('modal').dataset.panel,'flow');a.click('[data-action="tutorialContinue"]','modal-body');a.run(4);
+ a.click('[data-action="configure"]','modal-body');assert.equal(a.ids.get('modal').dataset.panel,'orders');a.click('[data-action="accept"]','modal-body');assert.equal(a.ids.get('modal').dataset.panel,'flow');assert(a.state().orders[0].releasePending);assert(a.ids.get('gantt-result').innerHTML.includes('release-selected'));assert(a.ids.get('release-forecast').innerHTML.includes('65 G'));a.click('[data-action="confirmRelease"]','modal-body');a.run(4);
  assert.equal(a.state().tutorial.step,'funding');assert.equal(a.ids.get('modal').dataset.panel,'finance');const t=a.state().t;a.click('[data-panel="staff"]','modal-tabs');a.run(2);assert.equal(a.state().t,t);a.click('[data-panel="finance"]','modal-tabs');
  a.click('[data-action="tutorialContinue"]','modal-body');a.run(20);assert.equal(a.ids.get('modal').dataset.panel,'shipping');assert.equal(a.state().ledger.revenue,0);assert(!a.ids.get('modal-body').querySelector('[data-action="ship"]'));assert(a.ids.get('modal-body').innerHTML.includes('前倒し出荷は禁止'));assert(a.ids.get('modal-body').innerHTML.includes('着工予約'));a.click('[data-action="tutorialContinue"]','modal-body');assert(a.state().t>=160-S.STEP);assert.equal(a.state().ledger.revenue,4300);assert.equal(a.ids.get('modal').dataset.panel,'finance');
  a.click('[data-action="tutorialContinue"]','modal-body');assert.equal(a.state().tutorial.step,'done');assert.equal(S.restore(a.saved()).metrics.delivered,1);
@@ -59,4 +59,21 @@ test('new tutorial replacement is explicit and backgrounding a demo never overwr
  const raw=S.serialize(S.create('surge')),a=app(raw);a.click('[data-opening="tutorial"]','opening');assert(a.ids.get('modal').open);assert.equal(a.saved(),raw);
  a.click('[data-opening="back"]','modal-body');a.click('[data-opening="demo"]','opening');a.run(10);a.document.hidden=true;a.emit('visibilitychange');const paused=S.serialize(a.state());a.run(10);a.emit('pagehide');assert.equal(S.serialize(a.state()),paused);assert.equal(a.saved(),raw);
  a.click('[data-demo="exit"]','modal-demo-controls');a.click('[data-opening="tutorial"]','opening');a.click('[data-opening="confirm"]','modal-body');assert.equal(a.state().tutorial.step,'layout');assert.equal(S.restore(a.saved()).scenario,'coast');assert.notEqual(a.saved(),raw);
+});
+test('accepting an offer opens its Gantt immediately; tab changes and closing never confirm it',()=>{
+ const s=S.create();s.nextOffer=s.nextEvent=s.nextDecision=Number.MAX_SAFE_INTEGER;const a=app(S.serialize(s));a.click('[data-opening="continue"]','opening');a.run(1);a.click('[data-panel="orders"]');
+ const t=a.state().t,cash=a.state().cash,button=a.click('[data-action="accept"]','modal-body'),id=button.dataset.id;
+ assert.equal(a.ids.get('modal').dataset.panel,'flow');assert(a.state().orders.find(o=>o.id===id).releasePending);assert.equal(a.ids.get('confirm-release').dataset.id,id);assert(a.ids.get('gantt-result').innerHTML.includes('release-selected'));
+ a.run(1);assert.equal(a.state().t,t);assert.equal(a.state().cash,cash);
+ const select=a.ids.get('modal-body').querySelector('[data-release-order="'+id+'"]');select.value='60';a.emit('change',{target:select});assert.equal(a.state().orders.find(o=>o.id===id).releaseAt,t+60);
+ a.click('[data-panel="staff"]','modal-tabs');a.run(1);a.click('[data-panel="flow"]','modal-tabs');assert.equal(a.state().t,t);assert.equal(a.ids.get('confirm-release').dataset.id,id);
+ a.click('#close-modal');a.run(2);assert(a.state().t>t);assert.equal(a.state().orders.find(o=>o.id===id).released,0);assert(a.state().orders.find(o=>o.id===id).releasePending);
+ a.emit('pagehide');const resumed=app(a.saved());resumed.click('[data-opening="continue"]','opening');assert.equal(resumed.ids.get('modal').dataset.panel,'flow');assert.equal(resumed.ids.get('confirm-release').dataset.id,id);const time=resumed.state().t;resumed.run(1);assert.equal(resumed.state().t,time);
+ resumed.click('[data-action="confirmRelease"]','modal-body');assert(!resumed.ids.get('modal').open);assert(!resumed.state().orders.find(o=>o.id===id).releasePending);resumed.run(1);assert(resumed.state().t>time);assert.equal(resumed.state().orders.find(o=>o.id===id).released,0);
+});
+test('the automatic demo visibly changes the Gantt and storage forecast before confirming its reservation',()=>{
+ const a=app();a.click('[data-opening="demo"]','opening');a.run(6);assert.equal(a.ids.get('modal').dataset.panel,'flow');const before=a.ids.get('gantt-result').innerHTML;
+ assert(a.ids.get('release-forecast').innerHTML.includes('65 G'));assert(a.state().orders[0].releasePending);assert.equal(a.state().t,0);
+ a.run(3);assert.equal(a.state().orders[0].releaseAt,60);assert(a.state().orders[0].releasePending);assert(a.ids.get('release-forecast').innerHTML.includes('11 G'));assert.notEqual(a.ids.get('gantt-result').innerHTML,before);assert.equal(a.state().t,0);assert.equal(a.state().jobs.length,0);
+ a.run(3);assert(!a.state().orders[0].releasePending);assert(a.state().t>0);assert(a.state().t<60);assert.equal(a.state().jobs.length,0);assert.equal(a.state().ledger.materials,0);
 });

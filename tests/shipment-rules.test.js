@@ -5,7 +5,7 @@ function quiet(s){s.nextOffer=s.nextEvent=s.nextDecision=Number.MAX_SAFE_INTEGER
 function training(){const s=S.create('coast',{tutorial:true});O.configureLayout(s,[1,1,2,1]);S.accept(s,s.offers[0].id);O.tutorialContinue(s);until(s,x=>x.tutorial.step==='funding');O.tutorialContinue(s);until(s,x=>x.tutorial.step==='shipping');return s;}
 test('v4 tutorial holding saves keep their cash and jobs, resume the lesson and ship at the original due time',()=>{
  const old=training();old.version=4;old.orders[0].autoShip=false;delete old.tutorial.storageLesson;
- const raw=S.serialize(old),s=S.restore(raw);assert.equal(s.version,5);assert.equal(s.t,old.t);assert.equal(s.cash,old.cash);assert.deepEqual(s.jobs,old.jobs);assert.equal(s.tutorial.step,'shipping');
+ const raw=S.serialize(old),s=S.restore(raw);assert.equal(s.version,S.VERSION);assert.equal(s.t,old.t);assert.equal(s.cash,old.cash);assert.deepEqual(s.jobs,old.jobs);assert.equal(s.tutorial.step,'shipping');
  assert.equal(s.orders[0].autoShip,undefined);assert.equal(s.tutorial.storageLesson.deadline,160);assert(!O.shipNow(s,s.jobs[0].id).ok);
  const snapshot=S.serialize(s),plan=P.predict(s);assert.equal(S.serialize(s),snapshot);assert(plan.rows[0].shipped);assert(Math.abs(plan.rows[0].finish-(160-s.t))<S.STEP);
  assert(O.tutorialContinue(s).ok);assert.equal(s.metrics.delivered,1);assert.equal(s.tutorial.step,'debrief');assert(Math.abs(s.t-160)<S.STEP);assert.equal(s.ledger.revenue,4300);assert(s.ledger.storageFinished>65);

@@ -2,7 +2,8 @@
 (function(root){'use strict';
 const S=root.YardSim||(typeof require==='function'?require('./simulation.js'):null);
 function* calculate(state,options={}){
- const s=S.restore(S.serialize(state)),origin=s.t;
+ const s=S.restore(S.serialize(state)),origin=s.t,reviewOrder=s.orders.find(o=>o.id===options.reviewOrderId&&o.status==='active');
+ if(reviewOrder){delete reviewOrder.releasePending;s.releaseEnabled=true;}
  const horizon=Math.min(3600,Math.max(600,...s.orders.filter(o=>o.status==='active').flatMap(o=>[o.deadline-origin+300,(o.releaseAt||origin)-origin+600])));
  s.offers=[];s.nextOffer=Number.MAX_SAFE_INTEGER;s.nextEvent=Number.MAX_SAFE_INTEGER;s.nextDecision=Number.MAX_SAFE_INTEGER;s.tutorial.step='done';
  const rows=new Map(),seen=new Map(),existing=new Set(state.jobs.map(j=>j.id));let ticks=0;
@@ -25,7 +26,7 @@ function* calculate(state,options={}){
   }
  }
  observe();
- while(!s.failed&&s.t-origin<horizon&&s.orders.some(o=>o.status==='active')){
+ while(!s.failed&&s.t-origin<horizon&&(s.jobs.length||s.orders.some(o=>o.status==='active'&&!o.releasePending))){
   S.step(s);observe();if(++ticks%250===0)yield {progress:(s.t-origin)/horizon};
  }
  for(const o of state.orders.filter(o=>o.status==='active')){
@@ -33,10 +34,16 @@ function* calculate(state,options={}){
   for(let n=0;n<missing;n++)rows.set(o.id+'-pending-'+n,{id:o.id+'-pending-'+n,order:o.id,product:o.product,deadline:o.deadline-origin,start:null,releaseAt:Math.max(0,(o.releaseAt||origin)-origin),spans:[],shipped:false});
  }
  const result=[...rows.values()];
- for(const row of result)if(!row.shipped)row.warning=s.failed?'予測中に資金不足':!state.releaseEnabled&&!row.spans.length?'自動着工が停止中':row.spans.some(x=>x.key.endsWith(':true'))?'手動退避中：出庫再開が必要':row.spans.some(x=>x.kind==='material_funds')?'材料の購入資金待ち':'人員・経路・保全・待ち枠を確認（'+Math.round(horizon/60)+'分先まで予測）';
+ for(const row of result)if(!row.shipped)row.warning=state.orders.find(o=>o.id===row.order)?.releasePending&&row.order!==options.reviewOrderId?'着工予約が未確定':s.failed?'予測中に資金不足':!s.releaseEnabled&&!row.spans.length?'自動着工が停止中':row.spans.some(x=>x.key.endsWith(':true'))?'手動退避中：出庫再開が必要':row.spans.some(x=>x.kind==='material_funds')?'材料の購入資金待ち':'人員・経路・保全・待ち枠を確認（'+Math.round(horizon/60)+'分先まで予測）';
  result.sort((a,b)=>a.deadline-b.deadline||a.order.localeCompare(b.order)||(a.start??Infinity)-(b.start??Infinity));
- return {origin,horizon:Math.min(horizon,s.t-origin),rows:result,failed:s.failed,ticks,assumptions:'受注済みのみ・現在の人員と経路で予測。着工予約、営業からの伝票、設計後の材料リードタイム、先行在庫と入荷待ち、運搬、待ち枠、保管料、材料費、給与、設備劣化、開始済み修理を反映。今後の商談・ランダムイベント・追加の修理操作は含みません。前倒し出荷は禁止。完成品は納期に自動出荷し、遅れて完成した分は到着後に出荷します。'};
+ return {origin,horizon:Math.min(horizon,s.t-origin),rows:result,failed:s.failed,ticks,reviewOrderId:reviewOrder?.id||null,assumptions:(reviewOrder?'選択中の受注をこの予約で確定し、自動着工を有効にした場合。他の未確定受注は着工させません。':'')+'受注済みのみ・現在の人員と経路で予測。着工予約、営業からの伝票、設計後の材料リードタイム、先行在庫と入荷待ち、運搬、待ち枠、保管料、材料費、給与、設備劣化、開始済み修理を反映。今後の商談・ランダムイベント・追加の修理操作は含みません。前倒し出荷は禁止。完成品は納期に自動出荷し、遅れて完成した分は到着後に出荷します。'};
 }
-function predict(s){const it=calculate(s);let r;do{r=it.next();}while(!r.done);return r.value;}
-const api={calculate,predict};root.YardPlanner=api;if(typeof module==='object'&&module.exports)module.exports=api;
+function predict(s,options={}){const it=calculate(s,options);let r;do{r=it.next();}while(!r.done);return r.value;}
+function orderForecast(s,plan,id){
+ const o=s.orders.find(o=>o.id===id),rows=plan.rows.filter(r=>r.order===id);if(!o||!rows.length)return null;
+ const known=rows.every(r=>Number.isFinite(r.ready)&&r.shipped),ready=known?Math.max(...rows.map(r=>r.ready)):null;
+ const holding=rows.reduce((n,r)=>n+r.spans.filter(x=>x.kind==='finished').reduce((m,x)=>m+Math.max(0,x.end-x.start),0),0),work=rows.reduce((n,r)=>n+r.spans.filter(x=>x.kind==='work').reduce((m,x)=>m+Math.max(0,x.end-x.start),0),0);
+ return {id,known,quantity:rows.length,ready,margin:known?o.deadline-s.t-ready:null,holding:known?holding:null,storageCost:known?holding*.9:null,work:known?work:null,late:rows.some(r=>r.late),warning:rows.find(r=>r.warning)?.warning||null};
+}
+const api={calculate,predict,orderForecast};root.YardPlanner=api;if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);
