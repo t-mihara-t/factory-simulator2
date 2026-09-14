@@ -119,6 +119,35 @@ dialog { inset:0; width:100%; max-width:100%; height:100dvh; max-height:100dvh; 
 .decision-card { background:#e2f2ed; border:2px solid #36a78a; border-radius:14px; padding:20px; margin-bottom:20px; }
 .decision-card h3 { font-size:1.375rem; margin:6px 0; }.decision-card p { line-height:1.6; }
 .support-options { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }.support-options button { text-align:left; padding:12px; }.support-options b,.support-options small { display:block; }.support-options small { font-size:.875rem; margin-top:6px; }
+.shipment-locked { flex:none; background:#fff0cb; color:#765010; border:1px solid #d7b464; padding:12px 16px; border-radius:9px; font-weight:750; }
+.release-planning { display:grid; grid-template-columns:minmax(280px,340px) minmax(0,1fr); gap:20px; align-items:start; margin-bottom:28px; }
+.release-review { min-width:0; background:#fff; border:2px solid #90bfa6; border-radius:12px; padding:16px; }
+.release-review h3,.release-chart h3 { margin:6px 0 12px; font-size:1.125rem; }
+.release-review .deadline { display:block; margin:12px 0; }
+.release-order-label { display:grid; gap:6px; font-size:.875rem; }
+.release-order-label select { width:100%; min-width:0; min-height:44px; padding:8px; border:1px solid #b1c9bb; border-radius:7px; background:#fff; }
+.release-review .control { display:grid; gap:8px; margin:12px 0; }.release-review .control select { width:100%; min-width:0; }
+.release-review .primary { white-space:normal; line-height:1.5; }
+.release-metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; margin:12px 0; }
+.release-metrics>div { min-width:0; background:#edf5f0; border-radius:8px; padding:10px; }
+.release-metrics span { display:block; font-size:.875rem; line-height:1.5; }.release-metrics b { display:block; font-size:1.125rem; margin-top:6px; font-variant-numeric:tabular-nums; }
+.release-metrics .release-late { background:#ffe7df; color:#a23622; }.release-tip { padding:10px; background:#eef5e7; color:#3d624c; border-radius:7px; font-size:.875rem; line-height:1.6; }
+.release-forecast-notes { margin:8px 0 14px; font-size:.875rem; }.release-forecast-notes summary { cursor:pointer; padding:8px 0; color:#376854; }
+.release-chart { min-width:0; overflow:hidden; }.release-chart .schedule-scroll { max-height:58dvh; }
+.release-selected .schedule-name { background:#d9efdf; border-left:4px solid #17725b; }.release-selected .schedule-track { box-shadow:inset 0 1px #65a98a,inset 0 -1px #65a98a; }
+@media(max-width:900px) { .release-planning { grid-template-columns:1fr; gap:16px; }.release-review { display:grid; grid-template-columns:1fr; }.release-chart .schedule-scroll { max-height:48dvh; } }
+@media(max-width:560px) { .release-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+.shipping-strategy { background:#fff; border:1px solid #cbded1; border-radius:12px; padding:16px; margin:14px 0; }
+.shipping-strategy h3 { font-size:1.0625rem; margin:0 0 12px; }
+.shipping-strategy ol { margin:0; padding-left:24px; display:grid; gap:10px; }
+.shipping-strategy li { font-size:.9375rem; line-height:1.65; padding-left:4px; }
+.shipping-strategy li span { display:block; color:#456356; }
+.shipping-comparison { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:14px; }
+.shipping-comparison>div { min-width:0; padding:12px; background:#f5eddb; border-radius:8px; }
+.shipping-comparison>div:last-child { background:#dbf0e6; }
+.shipping-comparison span,.shipping-comparison b,.shipping-comparison small { display:block; line-height:1.6; }
+.shipping-comparison b { font-size:1.125rem; }.shipping-comparison span,.shipping-comparison small { font-size:.875rem; }
+@media(max-width:560px) { .shipping-comparison { grid-template-columns:1fr; }.shipping-strategy { padding:12px; } }
 @media(max-width:800px) {
  .layout-presets,.line-composer,.layout-quote { grid-template-columns:repeat(2,minmax(0,1fr)); }
  .money-flow { display:flex; overflow-x:auto; padding:3px 3px 10px; scroll-snap-type:x proximity; }

@@ -13,7 +13,7 @@ test('tutorial is an action-gated journey from initial layout through real shipm
  assert(O.tutorialContinue(s).ok);until(s,x=>x.tutorial.step==='funding');assert.equal(s.ledger.materials,2850);assert.equal(s.ledger.revenue,0);assert.equal(s.ledger.cogs,0);
  const paused=S.serialize(s);advance(s,20);assert.equal(S.serialize(s),paused);s=S.restore(paused);assert(O.tutorialContinue(s).ok);
  until(s,x=>x.tutorial.step==='shipping');const job=s.jobs.find(j=>j.status==='finished');assert(job);assert.equal(s.metrics.delivered,0);assert.equal(O.finance(s).uncollected,4300);
- const cash=s.cash;advance(s,60);assert.equal(s.cash,cash);assert(O.shipNow(s,job.id).ok);assert.equal(s.cash,cash+4300);assert.equal(s.metrics.delivered,1);assert.equal(s.ledger.cogs,2850);assert.equal(s.tutorial.step,'debrief');assert(!O.shipNow(s,job.id).ok);
+ const cash=s.cash;advance(s,60);assert.equal(s.cash,cash);assert(!O.shipNow(s,job.id).ok);assert(!S.dispatchJob(s,job,true));const operating=s.ledger.operating,wait=job.deadline-s.t;assert(O.tutorialContinue(s).ok);assert(Math.abs(s.t-job.deadline)<S.STEP);assert(Math.abs(s.ledger.storageFinished-wait*.9)<1e-5);assert(Math.abs(s.cash-(cash+4300-(s.ledger.operating-operating)))<1e-5);assert.equal(s.metrics.delivered,1);assert.equal(s.ledger.cogs,2850);assert.equal(s.tutorial.step,'debrief');assert(!O.shipNow(s,job.id).ok);
  assert(O.tutorialContinue(s).ok);assert.equal(s.tutorial.step,'done');assert.equal(s.offers.length,3);advance(s,1);reconcile(s);
 });
 test('startup choices have valid routes, real parallel machines and distinct ongoing cost',()=>{
@@ -36,13 +36,15 @@ test('one-click expansion includes staffing, and rejected expansion has no parti
  const before=S.serialize(s);assert(!O.addParallel(s,0).ok);assert.equal(S.serialize(s),before);
  const poor=S.create();poor.cash=100;const unchanged=S.serialize(poor);assert(!O.addParallel(poor,2).ok);assert.equal(S.serialize(poor),unchanged);
 });
-test('completion stays unmonetized; optional early factory shipment charges exactly one 2% fee',()=>{
+test('completion cannot monetize early through either shipping API; due dispatch charges no early fee',()=>{
  const s=quiet(S.create());s.orders=s.orders.slice(0,1);assert(!O.shipNow(s,'j1').ok);until(s,x=>x.jobs.some(j=>j.status==='finished'));
- const j=s.jobs[0],cash=s.cash;assert.equal(s.ledger.revenue,0);assert.equal(s.ledger.cogs,0);assert(O.shipNow(s,j.id).ok);
- assert.equal(s.ledger.revenue,4300);assert.equal(s.ledger.freight,86);assert.equal(s.cash,cash+4300-86);assert.equal(s.ledger.cogs,2850);const before=S.serialize(s);assert(!O.shipNow(s,j.id).ok);assert.equal(S.serialize(s),before);reconcile(s);
+ const j=s.jobs[0],before=S.serialize(s);assert.equal(s.ledger.revenue,0);assert.equal(s.ledger.cogs,0);assert(!O.shipNow(s,j.id).ok);assert(!S.dispatchJob(s,j,true));assert.equal(S.serialize(s),before);
+ until(s,x=>x.t>=j.deadline-S.STEP*1.5);assert.equal(s.ledger.revenue,0);until(s,x=>x.metrics.delivered===1);
+ assert.equal(s.ledger.revenue,4300);assert.equal(s.ledger.freight,0);assert.equal(s.ledger.cogs,2850);const after=S.serialize(s);assert(!S.dispatchJob(s,j,true));assert.equal(S.serialize(s),after);reconcile(s);
 });
-test('late shipment is late even when manufacturing was finished before the deadline',()=>{
- const s=quiet(S.create());s.orders=s.orders.slice(0,1);s.orders[0].autoShip=false;advance(s,160);assert(s.jobs[0].finishedAt<s.orders[0].deadline);assert(O.shipNow(s,s.jobs[0].id).ok);assert.equal(s.metrics.late,1);assert.equal(s.metrics.ontime,0);assert(s.ledger.penalties>0);assert.equal(s.ledger.freight,0);reconcile(s);
+test('late completion ships immediately on arrival and incurs the late penalty',()=>{
+ const s=quiet(S.create());s.orders=s.orders.slice(0,1);assert(S.setRelease(s,s.orders[0].id,160).ok);until(s,x=>x.metrics.delivered===1,400);
+ assert(s.t>s.orders[0].deadline);assert.equal(s.jobs.length,0);assert.equal(s.metrics.late,1);assert.equal(s.metrics.ontime,0);assert(s.ledger.penalties>0);assert.equal(s.ledger.freight,0);reconcile(s);
 });
 test('investment guidance subtracts commitments and current operating reserve without treating unsold stock as cash',()=>{
  const s=quiet(S.create()),before=O.finance(s);assert.equal(before.commitment,9850);assert.equal(before.available,Math.max(0,s.cash-9850-before.burn*60));
@@ -67,7 +69,7 @@ test('every third on-time shipment grants one transparent reward, never fake sal
 });
 test('v3 progress migrates without a tutorial reset, and tutorial planning remains read-only',()=>{
  const s=S.create();advance(s,40);s.version=3;delete s.tutorial;delete s.transactions;delete s.nextDecision;const old=S.restore(JSON.stringify(s));assert.equal(old.tutorial.step,'done');assert.equal(old.cash,s.cash);assert.equal(old.t,s.t);
- const tutorial=S.create('coast',{tutorial:true});O.configureLayout(tutorial,[1,1,2,1]);S.accept(tutorial,tutorial.offers[0].id);O.tutorialContinue(tutorial);until(tutorial,x=>x.tutorial.step==='funding');const before=S.serialize(tutorial),plan=P.predict(tutorial);assert.equal(S.serialize(tutorial),before);assert(plan.rows.some(r=>r.spans.some(b=>b.kind==='finished')));assert(plan.rows.every(r=>!r.shipped));
+ const tutorial=S.create('coast',{tutorial:true});O.configureLayout(tutorial,[1,1,2,1]);S.accept(tutorial,tutorial.offers[0].id);O.tutorialContinue(tutorial);until(tutorial,x=>x.tutorial.step==='funding');const before=S.serialize(tutorial),plan=P.predict(tutorial);assert.equal(S.serialize(tutorial),before);assert(plan.rows.some(r=>r.spans.some(b=>b.kind==='finished')));assert(plan.rows.every(r=>r.shipped&&Math.abs(r.finish-r.deadline)<S.STEP));
 });
 test('map labels remain on screen and never intersect artwork or other labels, even at narrow sizes',()=>{
  for(const [width,height] of [[1440,680],[390,280],[844,180],[320,200]]){
@@ -79,5 +81,5 @@ test('map labels remain on screen and never intersect artwork or other labels, e
 test('management views render all tutorial checkpoints, funded layouts and populated shipment/decision panels',()=>{
  const fs=require('node:fs'),vm=require('node:vm'),context={YardSim:S,YardOperations:O};vm.createContext(context);vm.runInContext(fs.readFileSync(require.resolve('../dist/management.js'),'utf8'),context);const V=context.YardManagement;
  const s=S.create('coast',{tutorial:true});for(const step of Object.keys(O.TUTORIAL)){s.tutorial.step=step;for(const html of [V.briefing(s),V.moneyFlow(s),V.funds(s),V.layout(s,[1,1,2,1]),V.shipping(s),V.transactions(s)]){assert.equal(typeof html,'string');assert(!/undefined|NaN/.test(html));}}
- const live=quiet(S.create());until(live,x=>x.jobs.some(j=>j.status==='finished'));assert(V.shipping(live).includes('data-action="ship"'));live.decision={expires:live.t+32};assert(V.decision(live).includes('data-support="materials"'));assert(V.transactions(live).includes('材料の発注'));
+ const live=quiet(S.create());until(live,x=>x.jobs.some(j=>j.status==='finished'));assert(!V.shipping(live).includes('data-action="ship"'));assert(V.shipping(live).includes('前倒し出荷はできません'));assert(V.shipping(live).includes('着工予約'));live.decision={expires:live.t+32};assert(V.decision(live).includes('data-support="materials"'));assert(V.transactions(live).includes('材料の発注'));
 });

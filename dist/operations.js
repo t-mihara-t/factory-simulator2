@@ -4,13 +4,14 @@ const S=root.YardSim||(typeof require==='function'?require('./simulation.js'):nu
 const STAGES=['design','machining','assembly','inspection'],STARTER_GRANT=38000;
 const TUTORIAL={
  layout:{n:1,title:'工場の編成を決めよう',body:'各工程を1〜3並列で設計。増やすほど同時に作れますが、設備維持費と給与も増えます。',panel:'layout',cta:'最初のラインを編成'},
- order:{n:2,title:'最初の1両を受注しよう',body:'受注は約束。ここでは支払いも入金もありません。まず観光旅客車を1両引き受けましょう。',panel:'orders',cta:'商談を開く'},
- launch:{n:3,title:'受注伝票を設計へ送ろう',body:'材料はまだ買いません。設計のあとに発注し、到着した材料を加工へ運びます。',panel:'flow',cta:'生産計画を確認'},
- watch:{n:3,title:'伝票が到着。設計が始まる！',body:'「次の変化まで」で、着工や工程完了まで進められます。大切な場面では時間が止まります。',panel:'flow',cta:'計画を見る'},
+ order:{n:2,title:'最初の1両を受注しよう',body:'受注は約束。入金は納期の工場出荷時です。早く完成しても前倒し出荷はできません。まず観光旅客車を1両引き受けましょう。',panel:'orders',cta:'商談を開く'},
+ launch:{n:3,title:'ガントを見て、着工予約を決めよう',body:'予約時刻を変えるとガントと保管費が更新されます。完成を納期に近づけつつ、遅れへの余裕も残しましょう。確定するまで着工も材料購入もありません。',panel:'flow',cta:'生産計画を確認'},
+ watch:{n:3,title:'予約時刻に合わせて、伝票を設計へ',body:'予約待ちは8×、作業中は4×で進みます。「次の判断まで」で予約時刻へ進むこともできます。設計後の材料購入では自動停止。',panel:'flow',cta:'計画を見る'},
  funding:{n:4,title:'材料を発注して、お金が減った',body:'この1両の材料費は2,850G。手配した時点で現金を支払います。ここまで売上は0G。給与・維持費もゲーム時間に応じて掛かります。',panel:'finance',cta:'お金の流れを見る'},
- manufacture:{n:4,title:'完成へ。次に詰まる工程は？',body:'工程カードから人員や並列数を確認できます。「次の変化まで」で材料到着や作業完了を追いましょう。',panel:'flow',cta:'工程を調整'},
- shipping:{n:5,title:'完成した。でも、売上はまだ0G',body:'完成品倉庫で保管中です。「工場出荷する」を押し、出荷口を通過させて初めて売上が入ります。',panel:'shipping',cta:'最初の工場出荷へ'},
- debrief:{n:6,title:'初出荷！ 4,300Gが入金された',body:'現金は材料発注で減り、工場出荷で増えます。次は自分で受注・編成・着工時刻をつなぎましょう。',panel:'finance',cta:'入金を確認'}
+ manufacture:{n:4,title:'完成へ。次に詰まる工程は？',body:'工程カードから人員や並列数を確認できます。「次の判断まで」で材料到着や作業完了を追いましょう。',panel:'flow',cta:'工程を調整'},
+ shipping:{n:5,title:'前倒し出荷は禁止。納期まで入金は0G',body:'完成した車両は出荷倉庫で保留。納期までは出荷できず、1両につき0.90G / ゲーム秒の保管料が掛かります。早すぎる完成を防ぐ戦略を覚えましょう。',panel:'shipping',cta:'保管費と対策を見る'},
+ dispatch_wait:{n:5,title:'納期まで保管し、自動出荷を待つ',body:'時間を進めても納期は変わりません。保管料と給与・維持費を支払い、納期に工場出荷して入金します。',panel:'shipping',cta:'出荷予定を見る'},
+ debrief:{n:6,title:'初出荷！ 4,300Gが入金された',body:'納期に工場出荷して初めて売上が入りました。前倒し出荷はできません。次は着工予約・受注量・出荷までの手元資金をそろえ、早すぎる完成を防ぎましょう。',panel:'finance',cta:'入金を確認'}
 };
 function layoutQuote(s,counts){
  if(!Array.isArray(counts)||counts.length!==4||counts.some(n=>!Number.isInteger(n)||n<1||n>3))return {ok:false,message:'各工程は1〜3並列で選んでください。'};
@@ -28,10 +29,19 @@ function configureLayout(s,counts){
  S.news(s,'あなたのラインが完成',counts.join(' → ')+'並列。'+q.employees+'人で操業します。','good');
  return {ok:true,message:'編成を決定しました。次は受注を体験しましょう。'};
 }
+function acceptForPlanning(s,id){return S.accept(s,id,{reviewRelease:true});}
+function confirmRelease(s,id){const r=S.confirmRelease(s,id);if(!r.ok)return r;s.releaseEnabled=true;if(s.tutorial?.step==='launch'&&s.tutorial.orderId===id)s.tutorial.step='watch';return r;}
 function tutorialContinue(s){
  const t=s.tutorial;if(!t)return {ok:false,message:'案内は完了しています。'};
- if(t.step==='launch'){t.step='watch';s.releaseEnabled=true;return {ok:true,message:'受注伝票を送ります。設計後の材料購入に注目！'};}
+ if(t.step==='launch')return confirmRelease(s,t.orderId);
  if(t.step==='funding'){t.step='manufacture';return {ok:true,message:'材料を待ちながら、製造と運搬を進めます。'};}
+ if(t.step==='shipping'){
+  const j=s.jobs.find(j=>j.order===t.orderId&&j.status==='finished');if(!j)return {ok:false,message:'出荷倉庫の練習車両を確認してください。'};
+  t.storageLesson??={finishedAt:j.finishedAt,deadline:j.deadline,unitSale:s.orders.find(o=>o.id===j.order).unitSale};
+  t.step='dispatch_wait';const limit=Math.ceil(Math.min(3600,Math.max(0,j.deadline-s.t))/S.STEP)+1;
+  for(let n=0;n<limit&&t.step==='dispatch_wait'&&!s.failed;n++)S.step(s);
+  return {ok:!s.failed,message:s.failed?'納期までの運転資金が不足しました。材料費と運営費を残しておきましょう。':t.step==='debrief'?'納期まで時間を進め、工場出荷で入金しました。待った時間の保管料・給与も精算済みです。':'納期まで時間を進めています。'};
+ }
  if(t.step==='debrief'){t.step='done';s.nextOffer=s.t+16;s.nextDecision=s.t+25;s.nextEvent=s.t+75;
   for(const p of ['kintetsu','odakyu','e235'])s.offers.push(S.makeOffer(s,p,1,180));
   return {ok:true,message:'チュートリアル完了！ 次の3件の商談が届きました。'};
@@ -45,10 +55,10 @@ function finance(s){
 }
 function shipNow(s,id){
  if(s.failed)return {ok:false,message:'資金が尽きた工場からは出荷できません。'};
- const j=s.jobs.find(j=>j.id===id&&j.status==='finished');if(!j)return {ok:false,message:'完成品倉庫に到着した車両を選んでください。'};
- const o=s.orders.find(o=>o.id===j.order),fee=!o.training&&s.t<j.deadline?Math.round(o.unitSale*.02):0;
- S.dispatchJob(s,j,true);
- return {ok:true,message:'工場出荷！ 売上 '+o.unitSale.toLocaleString()+'Gを入金'+(fee?'（前倒し便 '+fee+'G）':'')+'。'};
+ const j=s.jobs.find(j=>j.id===id&&j.status==='finished');if(!j)return {ok:false,message:'出荷倉庫に到着した車両を選んでください。'};
+ if(s.t+.000001<j.deadline)return {ok:false,message:'前倒し出荷はできません。納期まであと'+Math.ceil(j.deadline-s.t)+'秒、保管が必要です。'};
+ const o=s.orders.find(o=>o.id===j.order);if(!S.dispatchJob(s,j))return {ok:false,message:'納期の自動出荷を待ってください。'};
+ return {ok:true,message:'納期を迎えた車両を工場出荷。売上 '+o.unitSale.toLocaleString()+'Gを入金しました。'};
 }
 function addParallel(s,stage){
  if(s.failed||!Number.isInteger(stage)||stage<0||stage>3)return {ok:false,message:'増設する工程を選んでください。'};
@@ -82,20 +92,21 @@ function chooseSupport(s,choice,stage){
 }
 function attention(s){
  const guide=TUTORIAL[s.tutorial?.step];if(guide)return {title:guide.title,detail:guide.body,panel:guide.panel};
+ const pending=s.orders.filter(o=>o.status==='active'&&o.releasePending);if(pending.length)return {title:'着工予約が未確定 '+pending.length+'件',detail:'ガントで納期・完成予定・保管費を見て確定しましょう。未確定の案件は着工しません。',panel:'flow'};
  if(s.decision)return {title:'応援便：あと'+Math.ceil(s.decision.expires-s.t)+'秒で受付終了',detail:'工程の加速か、材料の速達か。今の詰まりに合わせて選択。',panel:'events'};
  const b=s.buildings.find(b=>b.broken&&!b.repairRemaining);if(b)return {title:S.TYPES[b.type].short+'が故障停止',detail:'修理と人員配置を見直せます。',panel:'staff'};
- const finished=s.jobs.filter(j=>j.status==='finished');if(finished.length)return {title:finished.length+'両が完成・未入金',detail:'前倒し出荷で資金回収するか、納期の自動出荷を待つか。',panel:'shipping'};
- if(s.jobs.some(j=>j.status==='material_funds'))return {title:'材料の購入資金が不足',detail:'完成品の出荷や投資を見直しましょう。',panel:'finance'};
+ const finished=s.jobs.filter(j=>j.status==='finished');if(finished.length)return {title:finished.length+'両が完成・未入金',detail:'前倒し出荷は禁止。納期まで保管料が掛かります。次の着工予約と手元資金を確認。',panel:'shipping'};
+ if(s.jobs.some(j=>j.status==='material_funds'))return {title:'材料の購入資金が不足',detail:'納期前の完成品は換金できません。受注量・着工予約・投資を見直しましょう。',panel:'finance'};
  const bottleneck=loads(s).sort((a,b)=>b.seconds-a.seconds)[0];if(bottleneck.waiting>=2)return {title:S.TYPES[bottleneck.type].short+'に待ち '+bottleneck.waiting+'両',detail:'人員を移すか、2・3並列にするか。次の工程の余裕も確認。',panel:'layout'};
  if(s.offers.length)return {title:'新しい商談 '+s.offers.length+'件',detail:'納期・工程負荷・手元資金を見て次の受注を選ぼう。',panel:'orders'};
- return {title:'次の変化まで進められます',detail:'給与・保管料も時間に応じて精算し、判断の場面で停止。',panel:'flow'};
+ return {title:'次の判断まで進められます',detail:'給与・保管料も時間に応じて精算し、判断の場面で停止。',panel:'flow'};
 }
-function signature(s){return JSON.stringify([s.failed,s.tutorial?.step,s.ledger.materials,s.metrics.delivered,s.orders.reduce((n,o)=>n+o.released,0),s.offers.map(o=>o.id),s.decision?.id,s.news[0]?.id,s.jobs.map(j=>[j.id,j.stage,j.status,Math.ceil(j.deadline-s.t)<=5]),s.buildings.map(b=>[b.id,b.broken,!!b.repairRemaining])]);}
+function signature(s){return JSON.stringify([s.failed,s.tutorial?.step,s.ledger.materials,s.metrics.delivered,s.orders.reduce((n,o)=>n+o.released,0),s.offers.map(o=>o.id),s.decision?.id,s.news[0]?.id,s.jobs.map(j=>[j.id,j.stage,['finished','blocked','material_funds','material_ready','buffer'].includes(j.status)?j.status:'moving',j.held,Math.ceil(j.deadline-s.t)<=5]),s.buildings.map(b=>[b.id,b.broken,!!b.repairRemaining])]);}
 function advanceToDecision(s,max=60){
  if(!Number.isFinite(max)||max<=0||max>120)return {ok:false,message:'進める時間が不正です。'};
  const start=s.t,before=signature(s);for(let n=0;n<Math.ceil(max/S.STEP);n++){S.step(s);if(s.t===start||s.failed||signature(s)!==before)break;}
  return {ok:s.t>start,seconds:s.t-start,message:s.t>start?((s.t-start).toFixed(1)+'秒進行。'+attention(s).title):'チュートリアルの案内に沿って操作してください。'};
 }
-const api={STAGES,STARTER_GRANT,TUTORIAL,layoutQuote,configureLayout,tutorialContinue,finance,shipNow,addParallel,loads,chooseSupport,attention,advanceToDecision};
+const api={STAGES,STARTER_GRANT,TUTORIAL,acceptForPlanning,confirmRelease,layoutQuote,configureLayout,tutorialContinue,finance,shipNow,addParallel,loads,chooseSupport,attention,advanceToDecision};
 root.YardOperations=api;if(typeof module==='object'&&module.exports)module.exports=api;
 })(typeof globalThis!=='undefined'?globalThis:this);

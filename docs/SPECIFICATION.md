@@ -1,6 +1,6 @@
-# v0.4の追加仕様
+# v0.4.3までの追加仕様
 
-初回チュートリアル、並列編成、出荷と資金、管理タブ、待ち時間の短縮については [CHANGES_V04.md](CHANGES_V04.md) を参照してください。以下はv0.3までの基礎仕様です。相違がある箇所はv0.4の追加仕様を優先します。
+初回チュートリアル、並列編成、出荷と資金、管理タブ、待ち時間の短縮は [CHANGES_V04.md](CHANGES_V04.md)、オープニングは [CHANGES_V041.md](CHANGES_V041.md)、前倒し出荷禁止は [CHANGES_V042.md](CHANGES_V042.md)、受注直後のガント・予約確定は [CHANGES_V043.md](CHANGES_V043.md) を参照してください。以下はv0.3を基礎とする仕様です。相違がある箇所は新しい追加仕様を優先します。
 
 # Factory Simulator 2 — prototype 0.3
 
@@ -19,8 +19,10 @@ Current Japanese game proposal: [proposal.html](../dist/proposal.html).
 ## State transitions
 
 Accepted, unreleased order → release reservation and finite design capacity → paperwork from sales to design → design work → material procurement or advance stock allocation → raw material transport from supply yard to machining → assembly → inspection. Design resources are freed while procurement runs. Material funds/lead/capacity waits remain manufacturing WIP.
+
+New offers accepted through the game UI or demo enter `releasePending`, open the Gantt with that order selected, and require explicit confirmation before release. Changing `releaseAt`, closing management, turning auto-release on, or reloading never clears this hold. Confirmation enables auto-release and resumes operation; capacity and reservation time still gate the actual launch. Scenario starting orders and legacy saves retain their confirmed state. Pending orders still carry their original deadlines, consume an active-order slot, and contribute to material commitments.
 Completed work goes to an available next-stage input, otherwise to warehouse, otherwise blocks its producing station.
-Warehouse contents automatically return to an eligible next stage. Completed inspection transfers to the finished-goods store at dispatch. Early arrivals incur 0.90 G/car/second until the deadline; shipment then realizes revenue and cost of sales. Late arrivals ship immediately.
+Warehouse contents automatically return to an eligible next stage. Completed inspection transfers to the finished-goods store at dispatch. Early arrivals incur 0.90 G/car/second until the deadline; shipment then realizes revenue and cost of sales. Early shipping is prohibited at the simulation boundary, including tutorial and demo. There is no manual early-shipment action or fee. Late arrivals ship immediately. The tutorial advances the clock to the due date using normal cost-bearing ticks; it never moves the due date or pays revenue early.
 
 Station input capacity is 2, including incoming transport reservations. An active or blocked job occupies the machine, not an input queue slot. Warehouse capacity is 6×level, also including incoming reservations.
 Work-in-progress counts jobs with stage < 4, including work, transfer, station queue, blocked output and intermediate warehouse. Finished goods are excluded. Lowering the limit does not delete existing jobs.
@@ -62,7 +64,7 @@ Keep generating offers after scenario clearance. Rewards cannot be reclaimed.
 ## Saves and limits
 
 Explicitly device-local save key `railworks-yard-save-v1`, preferences `railworks-yard-prefs-v1`; no old-game save migration. Autosave every 15 simulation seconds and on actions/visibility loss, plus manual save. Saving exceptions never crash play.
-Schema 3; migrates schemas 1 and 2 without changing historical cash or material value. Legacy in-flight jobs have paid materials and skip a second purchase after design. New jobs follow the procurement rules. Serialization excludes route cache; restore reconstructs cache on demand.
+Schema 6; migrates schemas 1–5 without changing historical cash or material value. Pending reservations persist across reload and reopen in management on Continue. Legacy in-flight jobs have paid materials and skip a second purchase after design. New jobs follow the procurement rules. Serialization excludes route cache; restore reconstructs cache on demand.
 Bounds: 36 facilities, 60 workers, WIP selectable up to 12. Map dimensions are fixed in prototype.
 Offer list capped, news 30 items, chart history 240 samples. Completed order history is retained in save.
 
@@ -75,7 +77,7 @@ Road laying, finite transport fleets, collision/congestion, multiple suppliers a
 `node --test tests/*.test.js`
 `npm run check` (equivalent Node syntax checks and scripts/check-static.js; no installation required).
 
-34 behavior tests pass. All six scenarios clear under the documented heuristic; see CHANGES_V03.md for exact results. This proves existence of a successful strategy, not first-time difficulty or mobile frame rate.
+68 behavior tests pass. All six scenarios clear under the documented heuristic; see CHANGES_V03.md for scenario results and CHANGES_V043.md for reservation verification. This proves existence of a successful strategy, not first-time difficulty or mobile frame rate.
 Browser, native touch/audio, visual QA and real-device performance are not verified in this task.
 
 ## New operating details
@@ -83,3 +85,5 @@ Browser, native touch/audio, visual QA and real-device performance are not verif
 Floor queue / blocked-output storage: 0.60 G/car/sec; intermediate warehouse: 0.25; finished goods: 0.90. All are part of operating expenses, with a separate subledger. Manual intermediate storage holds until resumeJob. Accepted orders may have releaseAt and per-stage routes; factory routeDefaults apply otherwise. Explicit routes wait for that facility, and already-dispatched transfers remain committed.
 
 planner.js clones the live engine state and advances the same fixed step, without future offers or random events, up to 3600 seconds. It accounts for finite resource and waiting capacity, transport, deterioration, already-started repairs, wages, inventory costs, release gates, advance stock, material lead times and cash. Chart width uses two pixels per simulation second so release shifts remain visible as the horizon expands. It does not perform optimization or assume future player repairs.
+
+When reviewing a reservation, the clone confirms only the selected order and enables auto-release; other pending orders remain held and show an explicit unknown-completion warning. The selected-order summary reports the last remaining vehicle's completion, signed deadline margin, summed finished-storage car-seconds and their cost at 0.90 G/car/second. Unknown predictions use null values rather than reporting a safe zero. Changes recalculate asynchronously; confirmation waits for the current calculation. Forecasts do not mutate live time, cash, reservations or progress.
